@@ -22,6 +22,7 @@
     "docs:capture:piece-motion": "node scripts/capture-piece-motion-gif.mjs",
     "docs:capture:arm-model": "node scripts/capture-arm-model-gif.mjs",
     "docs:capture:robot-arm-motion": "node scripts/capture-robot-arm-motion-gif.mjs",
+    "docs:capture:video-gif": "node scripts/capture-video-gif.mjs",
     "test:all": "npm.cmd run test:kinematics && npm.cmd run test:kinematics:m2 && npm.cmd run test:kinematics:e2e && npm.cmd run test:ux && npm.cmd run test:piece-mode && npm.cmd run test:cell-rigs && npm.cmd run test:old-robots && npm.cmd run test:industrial-scene && npm.cmd run test:articulation && npm.cmd run test:parts && npm.cmd run test:render",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",

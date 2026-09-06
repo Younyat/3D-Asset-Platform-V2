@@ -290,6 +290,10 @@ El flujo real es:
 6. Si la pinza toca la caja, el brazo la levanta y la deja sobre la cinta.
 7. Si no hay contacto, el brazo ejecuta el ciclo vacio y no teletransporta ninguna caja.
 
+La siguiente imagen movil sale del video `planta industrial.mp4`. Sirve como referencia visual del comportamiento esperado para la celda completa: escena industrial en movimiento, lectura clara del flujo y coordinacion entre elementos de planta.
+
+![Planta industrial completa en movimiento](docs/readme-assets/industrial-plant-video.gif)
+
 La celda real reutiliza el mismo `KinematicGraph` que la celda procedural, pero la geometria visible sale de los GLB de `scenario_1`. Esto permite comparar el prototipo JS contra assets reales sin duplicar la logica mecanica.
 
 La geometria por si sola no puede demostrar la funcion fisica real de una pieza sin sus conexiones, contactos o especificacion mecanica. Por eso la plataforma automatiza el calculo y las invariantes geometricas, pero deja al usuario validar la funcion mecanica observada antes de aceptarla. Esta separacion evita inventar articulaciones falsas.
@@ -424,6 +428,7 @@ Assets actuales:
 - `cell-cobot-top-motion.gif` (cobot 6 ejes, vista superior, clip `Ciclo_Asistencia`)
 - `cell-industrial-arm-motion.gif` (brazo industrial con clip `Toma_De_Cinta`)
 - `cell-conveyor-motion.gif` (cinta parametrica con clip `Ciclo_Transporte`)
+- `industrial-plant-video.gif` (imagen movil generada desde `planta industrial.mp4`)
 - `arm-motion-industrial.gif` (animacion completa del brazo industrial)
 - `robot-arm-full-motion.gif` (animacion completa del brazo industrial)
 
@@ -470,6 +475,12 @@ Para generar las demostraciones mecanicas del README:
 
 ```powershell
 $env:ARM_MODEL_PATH='3d imported models\nuewrobot\brazo-robot-industrial\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-industrial.gif'; $env:ARM_GIF_LABEL='Brazo industrial GLB'; npm.cmd run docs:capture:arm-model
+```
+
+Para convertir el video de planta industrial en imagen movil:
+
+```powershell
+$env:VIDEO_GIF_SOURCE='..\..\planta industrial.mp4'; $env:VIDEO_GIF_OUTPUT='docs\readme-assets\industrial-plant-video.gif'; npm.cmd run docs:capture:video-gif
 ```
 
 Para generar las demostraciones de la celda robotica:
