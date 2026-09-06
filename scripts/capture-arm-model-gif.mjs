@@ -14,6 +14,8 @@ const frameCount = Number(process.env.ARM_GIF_FRAMES ?? 14);
 const requestedClipName = process.env.ARM_CLIP_NAME;
 const minChangedSamples = Number(process.env.ARM_GIF_MIN_CHANGED ?? 80);
 const requestedCamera = process.env.ARM_GIF_CAMERA ? JSON.parse(process.env.ARM_GIF_CAMERA) : undefined;
+const startRatio = Math.min(0.95, Math.max(0, Number(process.env.ARM_GIF_START_RATIO ?? 0)));
+const endRatio = Math.min(1, Math.max(startRatio + 0.01, Number(process.env.ARM_GIF_END_RATIO ?? 1)));
 
 if (!process.env.ARM_MODEL_PATH) throw new Error('ARM_MODEL_PATH is required.');
 if (!existsSync(viteBin)) throw new Error('Vite is not installed. Run npm.cmd install first.');
@@ -71,7 +73,7 @@ const changedPixelSamples = (a, b) => {
 
 const makeJointValues = (page, step, total) =>
   page.evaluate(
-    ({ frameStep, frameTotal, clipName }) => {
+    ({ frameStep, frameTotal, clipName, captureStartRatio, captureEndRatio }) => {
       const node = window.__assetForgeDocument?.nodes.find((item) => item.geometry?.kind === 'imported-model');
       const geometry = node?.geometry;
       const graph = geometry?.kinematicGraph;
@@ -83,7 +85,8 @@ const makeJointValues = (page, step, total) =>
         clips[0];
       if (preferredClip?.keyframes?.length) {
         const duration = Math.max(preferredClip.duration ?? 0, preferredClip.keyframes[preferredClip.keyframes.length - 1]?.time ?? 0.001, 0.001);
-        const time = (frameStep / Math.max(1, frameTotal - 1)) * duration;
+        const normalizedTime = captureStartRatio + ((captureEndRatio - captureStartRatio) * frameStep) / Math.max(1, frameTotal - 1);
+        const time = normalizedTime * duration;
         const sorted = [...preferredClip.keyframes].sort((a, b) => a.time - b.time);
         let previous = sorted[0];
         let next = sorted[sorted.length - 1];
@@ -106,7 +109,8 @@ const makeJointValues = (page, step, total) =>
         return { nodeId: node.id, values, jointCount: Object.keys(values).length, clipName: preferredClip.name };
       }
       const home = geometry.kinematicState?.homeJointValues ?? {};
-      const phaseBase = (frameStep / Math.max(1, frameTotal - 1)) * Math.PI * 2;
+      const normalizedTime = captureStartRatio + ((captureEndRatio - captureStartRatio) * frameStep) / Math.max(1, frameTotal - 1);
+      const phaseBase = normalizedTime * Math.PI * 2;
       const values = {};
       graph.joints
         .filter((joint) => joint.type !== 'fixed' && joint.status !== 'rejected')
@@ -121,7 +125,7 @@ const makeJointValues = (page, step, total) =>
         });
       return { nodeId: node.id, values, jointCount: Object.keys(values).length, clipName: 'fallback' };
     },
-    { frameStep: step, frameTotal: total, clipName: requestedClipName },
+    { frameStep: step, frameTotal: total, clipName: requestedClipName, captureStartRatio: startRatio, captureEndRatio: endRatio },
   );
 
 const server = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {

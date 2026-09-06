@@ -480,16 +480,16 @@ $env:ARM_MODEL_PATH='3d imported models\nuewrobot\brazo-robot-industrial\industr
 Para convertir el video de planta industrial en imagen movil:
 
 ```powershell
-$env:VIDEO_GIF_SOURCE='..\..\planta industrial.mp4'; $env:VIDEO_GIF_OUTPUT='docs\readme-assets\industrial-plant-video.gif'; npm.cmd run docs:capture:video-gif
+$env:VIDEO_GIF_SOURCE='..\..\planta industrial.mp4'; $env:VIDEO_GIF_OUTPUT='docs\readme-assets\industrial-plant-video.gif'; $env:VIDEO_GIF_FRAMES='38'; $env:VIDEO_GIF_DELAY='18'; $env:VIDEO_GIF_START_RATIO='0.04'; $env:VIDEO_GIF_END_RATIO='0.96'; npm.cmd run docs:capture:video-gif
 ```
 
 Para generar las demostraciones de la celda robotica:
 
 ```powershell
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-front-motion.gif'; $env:ARM_GIF_LABEL='Cobot frontal GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[4.2,2.3,5.8],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-side-motion.gif'; $env:ARM_GIF_LABEL='Cobot lateral GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[6.4,2.1,0.15],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-top-motion.gif'; $env:ARM_GIF_LABEL='Cobot superior GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[0.35,7.2,0.35],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-industrial-arm-motion.gif'; $env:ARM_GIF_LABEL='Brazo industrial celda GLB'; $env:ARM_CLIP_NAME='Toma_De_Cinta'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-front-motion.gif'; $env:ARM_GIF_LABEL='Cobot frontal GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_FRAMES='20'; $env:ARM_GIF_START_RATIO='0.26'; $env:ARM_GIF_END_RATIO='0.96'; $env:ARM_GIF_CAMERA='{"position":[6.4,3.5,9.8],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-side-motion.gif'; $env:ARM_GIF_LABEL='Cobot lateral GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_FRAMES='20'; $env:ARM_GIF_START_RATIO='0.12'; $env:ARM_GIF_END_RATIO='0.92'; $env:ARM_GIF_CAMERA='{"position":[10.4,3.2,2.8],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-top-motion.gif'; $env:ARM_GIF_LABEL='Cobot superior GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_FRAMES='20'; $env:ARM_GIF_START_RATIO='0.12'; $env:ARM_GIF_END_RATIO='0.92'; $env:ARM_GIF_CAMERA='{"position":[1.4,13.6,1.4],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-industrial-arm-motion.gif'; $env:ARM_GIF_LABEL='Brazo industrial celda GLB'; $env:ARM_CLIP_NAME='Toma_De_Cinta'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_FRAMES='20'; $env:ARM_GIF_START_RATIO='0.10'; $env:ARM_GIF_END_RATIO='0.95'; $env:ARM_GIF_CAMERA='{"position":[8.2,3.35,-7.35],"target":[-0.18,1.02,-0.08]}'; npm.cmd run docs:capture:arm-model
 $env:ARM_MODEL_PATH='3d imported models\celda_robotica\conveyor-belt-2400.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-conveyor-motion.gif'; $env:ARM_GIF_LABEL='Cinta celda'; $env:ARM_CLIP_NAME='Ciclo_Transporte'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[2.6,1.35,1.65],"target":[0,0.72,0]}'; npm.cmd run docs:capture:arm-model
 ```
 
