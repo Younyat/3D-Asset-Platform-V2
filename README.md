@@ -107,6 +107,8 @@ Formatos soportados directamente:
 | OBJ | `.obj` | Importacion de mallas estaticas |
 | 3DS | `.3ds` | Soportado con reconstruccion de jerarquia mecanica |
 
+Para robots y maquinaria articulada, `.glb` es la opcion preferida cuando existe. Un `.obj` normalmente solo trae malla y material basico; no guarda una escena mecanica moderna con jerarquia, nodos funcionales, clips, pivotes o metadatos de rig. Por eso algunos modelos `.obj` se ven bien como geometria estatica pero no se mueven correctamente hasta que la plataforma reconstruye un rig externo. En cambio, `.glb` puede conservar nodos, transforms, materiales PBR y datos de animacion en un unico fichero. En `IRAmk4`, la alternativa valida es `.3ds`, porque contiene una separacion de objetos que permite recuperar mejor la estructura mecanica que el OBJ plano.
+
 ### 2. Normalizar Escala
 
 Muchos modelos descargados o exportados desde CAD llegan con escalas enormes, muy pequenas o desplazados del suelo. El importador calcula limites originales, limites normalizados, escala de importacion y offset. El resultado queda ajustado a una escena practica sin destruir los datos originales.
@@ -240,7 +242,7 @@ J1 gira sobre Y, J2-J4 sobre Z, J5 sobre X y J6 sobre Y. Los clips importados so
 
 **Brazo industrial 6 ejes con pinza**
 
-El modelo estatico `industrial-arm-6dof.obj` se recupera desde la documentacion de la celda: J1 Y, J2 Z, J3 Z, J4 Y, J5 Z, J6 Y y dos dedos lineales opuestos en X. La pinza usa coupling/mimic para que los dedos se muevan de forma simetrica.
+La captura se genera desde `industrial-arm-6dof.glb`, que es la variante recomendada para conservar escena, materiales y estructura funcional. Si solo existe `industrial-arm-6dof.obj`, la plataforma puede reconstruir el rig desde la documentacion de la celda: J1 Y, J2 Z, J3 Z, J4 Y, J5 Z, J6 Y y dos dedos lineales opuestos en X. La pinza usa coupling/mimic para que los dedos se muevan de forma simetrica.
 
 ![Brazo industrial de celda con toma desde cinta](docs/readme-assets/cell-industrial-arm-motion.gif)
 
@@ -284,6 +286,8 @@ La celda real reutiliza el mismo `KinematicGraph` que la celda procedural, pero 
 
 Las siguientes capturas se generan desde modelos completos importados en la plataforma. Cada GIF se valida comparando frames y renderizados reales antes de guardarse.
 
+Para estas demos se usan los assets reales de `3d imported models/old_robots/`, porque son los modelos completos disponibles para regresion. `iRobot` y `Rmk3` se recuperan desde OBJ con rig profesional reconstruido; `IRAmk4` se recupera desde 3DS porque ese formato conserva mejor la separacion mecanica del asset.
+
 **iRobot**
 
 ![Movimiento completo del brazo iRobot](docs/readme-assets/arm-motion-irobot.gif)
@@ -298,7 +302,7 @@ Las siguientes capturas se generan desde modelos completos importados en la plat
 
 **Brazo industrial**
 
-El paquete `brazo-robot-industrial.obj` se recupera como rig funcional aunque el OBJ sea estatico: la plataforma reconstruye J1-J6 desde las mallas, aplica pivotes medidos sobre la geometria real y reproduce el ciclo profesional completo.
+El paquete se captura desde `industrial-arm-6dof.glb`. La variante `brazo-robot-industrial.obj` sigue soportada como fallback estatico, pero para documentacion y pruebas visuales se usa GLB porque conserva mejor la estructura del rig y evita depender de una reconstruccion posterior.
 
 ![Movimiento completo del brazo robot industrial](docs/readme-assets/arm-motion-industrial.gif)
 
@@ -480,17 +484,17 @@ npm.cmd run docs:capture:piece-motion
 Para generar las demostraciones mecanicas del README:
 
 ```powershell
-$env:ARM_MODEL_PATH='3d imported models\o1j4e9phg8w0-iRobot\OBJ_Robot.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-irobot.gif'; $env:ARM_GIF_LABEL='iRobot'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\sk095yah4v7k-ModelRmk3\Rmk3.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-rmk3.gif'; $env:ARM_GIF_LABEL='Rmk3'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\nt2c2mxl0kqo-IRAmk4v3\IRAmk4.3ds'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-iramk4.gif'; $env:ARM_GIF_LABEL='IRAmk4'; npm.cmd run docs:capture:arm-model
-$env:ROBOT_ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-industrial.gif'; npm.cmd run docs:capture:robot-arm-motion
+$env:ARM_MODEL_PATH='3d imported models\old_robots\OBJ_Robot.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-irobot.gif'; $env:ARM_GIF_LABEL='iRobot'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\old_robots\Rmk3.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-rmk3.gif'; $env:ARM_GIF_LABEL='Rmk3'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\old_robots\IRAmk4.3ds'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-iramk4.gif'; $env:ARM_GIF_LABEL='IRAmk4'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\nuewrobot\brazo-robot-industrial\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-industrial.gif'; $env:ARM_GIF_LABEL='Brazo industrial GLB'; npm.cmd run docs:capture:arm-model
 ```
 
 Para generar las demostraciones de la celda robotica:
 
 ```powershell
 $env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-motion.gif'; $env:ARM_GIF_LABEL='Cobot celda'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\industrial-arm-6dof.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-industrial-arm-motion.gif'; $env:ARM_GIF_LABEL='Brazo industrial celda'; $env:ARM_CLIP_NAME='Toma_De_Cinta'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-industrial-arm-motion.gif'; $env:ARM_GIF_LABEL='Brazo industrial celda GLB'; $env:ARM_CLIP_NAME='Toma_De_Cinta'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
 $env:ARM_MODEL_PATH='3d imported models\celda_robotica\conveyor-belt-2400.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-conveyor-motion.gif'; $env:ARM_GIF_LABEL='Cinta celda'; $env:ARM_CLIP_NAME='Ciclo_Transporte'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[2.6,1.35,1.65],"target":[0,0.72,0]}'; npm.cmd run docs:capture:arm-model
 ```
 
