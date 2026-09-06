@@ -1,0 +1,41 @@
+# conveyor-segment · materiales
+
+newmtl conv_frame
+Ka 0.0000 0.0000 0.0000
+Kd 0.7913 0.7991 0.8148
+Ks 0.2000 0.2000 0.2000
+Ns 108
+d 1.000
+illum 2
+
+newmtl conv_frame_shade
+Ka 0.0000 0.0000 0.0000
+Kd 0.6445 0.6584 0.6795
+Ks 0.2000 0.2000 0.2000
+Ns 100
+d 1.000
+illum 2
+
+newmtl conv_belt_surface
+Ka 0.0000 0.0000 0.0000
+Kd 1.0000 1.0000 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 28
+d 1.000
+illum 2
+
+newmtl conv_belt
+Ka 0.0000 0.0000 0.0000
+Kd 0.0423 0.0437 0.0467
+Ks 0.2000 0.2000 0.2000
+Ns 30
+d 1.000
+illum 2
+
+newmtl conv_steel
+Ka 0.0000 0.0000 0.0000
+Kd 0.4793 0.5029 0.5271
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.000
+illum 2

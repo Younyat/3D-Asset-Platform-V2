@@ -1,0 +1,51 @@
+{
+  "name": "3d-asset-forge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:fresh": "node scripts/dev-fresh.mjs",
+    "dev:tauri": "vite --host 127.0.0.1 --port 5190 --strictPort",
+    "build": "tsc && vite build",
+    "test:render": "node scripts/regression-render.mjs",
+    "test:articulation": "node scripts/regression-articulation.mjs",
+    "test:parts": "node scripts/regression-parts-selection.mjs",
+    "test:kinematics": "node scripts/kinematics-tests.mjs",
+    "test:kinematics:e2e": "node scripts/kinematics-e2e.mjs",
+    "test:ux": "node scripts/kinematics-ux.mjs",
+    "test:piece-mode": "node scripts/piece-analysis-e2e.mjs",
+    "test:cell-rigs": "node scripts/regression-cell-rigs.mjs",
+    "test:old-robots": "node scripts/regression-old-robots.mjs",
+    "test:industrial-scene": "node scripts/regression-industrial-scene.mjs",
+    "test:kinematics:m2": "node scripts/m2-kinematics-tests.mjs",
+    "docs:capture:piece-motion": "node scripts/capture-piece-motion-gif.mjs",
+    "docs:capture:arm-model": "node scripts/capture-arm-model-gif.mjs",
+    "docs:capture:robot-arm-motion": "node scripts/capture-robot-arm-motion-gif.mjs",
+    "test:all": "npm.cmd run test:kinematics && npm.cmd run test:kinematics:m2 && npm.cmd run test:kinematics:e2e && npm.cmd run test:ux && npm.cmd run test:piece-mode && npm.cmd run test:cell-rigs && npm.cmd run test:old-robots && npm.cmd run test:industrial-scene && npm.cmd run test:articulation && npm.cmd run test:parts && npm.cmd run test:render",
+    "preview": "vite preview --host 127.0.0.1",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.171.0",
+    "vite": "^6.0.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.171.0",
+    "gifenc": "^1.0.3",
+    "typescript": "^5.7.2"
+  }
+}

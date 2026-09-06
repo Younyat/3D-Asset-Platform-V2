@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Escenario conjunto · celda robótica de 3 activos</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./doc-style.css">
+<style>
+  .doc .layout { background: #f5f3ee; border: 1px solid #e2ded6; padding: 14px; margin: 10px 0 14px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 8pt; line-height: 1.65; break-inside: avoid; white-space: pre; }
+  .doc .gantt { width: 100%; border-collapse: collapse; font-size: 8pt; margin: 8px 0 14px;
+    font-family: 'IBM Plex Sans', sans-serif; }
+  .doc .gantt th { padding: 4px 3px; border-bottom: 1.5px solid #17181a; font-weight: 600; text-align: center; font-size: 7pt; }
+  .doc .gantt th:first-child { text-align: left; width: 84px; }
+  .doc .gantt td { padding: 0; border-bottom: 1px solid #e6e2da; height: 20px; }
+  .doc .gantt td:first-child { padding: 0 6px 0 0; font-weight: 500; font-size: 8pt; }
+  .doc .gantt .bar { display: block; height: 12px; border-radius: 2px; }
+  .doc .gantt .b1 { background: #d9520c; }
+  .doc .gantt .b2 { background: #4a5a68; }
+  .doc .gantt .b3 { background: #8a8f93; }
+  .doc .gantt .b4 { background: #e8b400; }
+</style>
+</head>
+<body>
+<doc-page margin="0.8in" class="doc">
+  <div slot="footer" class="foot">Escenario conjunto · celda robótica de 3 activos · v1.0</div>
+
+  <p class="kicker">Integración · los tres activos juntos</p>
+  <h1>Escenario conjunto</h1>
+  <p class="sub">Cómo se colocan, se sincronizan y se traspasan piezas el cobot, el brazo industrial y la cinta</p>
+
+  <div class="meta">
+    <span><b>Activos</b>3 archivos independientes</span>
+    <span><b>Ciclo maestro</b>10,0 s</span>
+    <span><b>Origen de la celda</b>centro de la cinta</span>
+    <span><b>Código de referencia</b>cell-orchestrator.js</span>
+  </div>
+
+  <div class="note" style="margin-top:0"><b>Si el extremo del brazo se descompone durante el movimiento</b>, la referencia exacta de qué eje mueve cada joint y cómo se coordinan entre sí está en <a href="./ESPECIFICACION-EJES.html">Especificación de ejes</a>.</div>
+
+  <h2>1. Principio: activos independientes, árbitro externo</h2>
+  <p>Los tres modelos son archivos separados y se animan por separado. Ninguno contiene referencias a los otros, y esa es la propiedad que hay que preservar: permite sustituir un brazo, duplicar la cinta o cambiar el orden de la línea sin reexportar nada.</p>
+  <p>La coordinación no vive dentro de los modelos: vive en un <b>árbitro externo</b> que carga los tres, los coloca en la celda y les envía órdenes. Cada activo publica lo que hace y consume señales; nunca lee el estado interno de otro. El módulo <code>cell-orchestrator.js</code> del paquete es la implementación de referencia de ese árbitro.</p>
+  <div class="note">
+    <b>Regla de oro.</b> Un activo nunca conoce a otro. El cobot no sabe que existe la cinta: solo
+    sabe soltar la pieza en un punto. El árbitro es quien decide que ese punto es
+    <code>INFEED_STATION</code>.
+  </div>
+
+  <h2>2. Colocación en la celda</h2>
+  <p>El origen de la celda coincide con el centro de la cinta. Las bases de los dos brazos se sitúan a la distancia de alcance de las estaciones correspondientes.</p>
+  <table>
+    <thead><tr><th>Activo</th><th class="mono">Posición (x · y · z)</th><th>Giro Y</th><th>Encara</th></tr></thead>
+    <tbody>
+      <tr><td>Cinta</td><td class="mono">0 · 0 · 0</td><td>0°</td><td>transporte hacia +X</td></tr>
+      <tr><td>Brazo industrial</td><td class="mono">0,78 · 0 · −0,72</td><td>+90°</td><td>PICK_STATION</td></tr>
+      <tr><td>Cobot</td><td class="mono">−0,95 · 0 · 0,50</td><td>−90°</td><td>INFEED_STATION</td></tr>
+    </tbody>
+  </table>
+
+  <div class="layout">planta de la celda (vista desde arriba, cotas en metros)
+
+        z
+        ↑
+  +0,5  │        ╔═══════╗ cobot (alcance 0,92)
+        │        ║   ⬤   ║   base en (−0,95 · 0,50)
+        │        ╚═══╤═══╝
+        │            ╎ deposita en INFEED
+   0    ├──────●─────┴────────────────────────●──────→ x
+        │   INFEED                          PICK
+        │  (−0,95)      cinta 2400 mm       (0,78)
+        │                                     ╎ toma
+  −0,7  │                                 ╔═══╧═══╗
+        │                                 ║   ⬤   ║ brazo industrial
+        │                                 ╚═══════╝   base en (0,78 · −0,72)
+                                                      (alcance 1,05)
+    flujo de material  ────────────────────────────→</div>
+
+  <p>Distancias de alcance resultantes: del cobot a <code>INFEED_STATION</code> hay 0,50 m horizontales y 0,80 m de altura (dentro de sus 0,92 m); del brazo industrial a <code>PICK_STATION</code> hay 0,72 m horizontales y 0,80 m de altura (dentro de sus 1,05 m). Los volúmenes de trabajo de los dos brazos <b>no se solapan</b>: están en lados opuestos y en extremos opuestos de la cinta, así que no hace falta gestión de colisiones entre ellos.</p>
+
+  <h2>3. Ciclo maestro de 10 segundos</h2>
+  <p>Una pieza en juego por ciclo. El ciclo de 10 s es el mínimo común: coincide con la duración de <code>Ciclo_Asistencia</code> del cobot y de <code>Toma_De_Cinta</code> del brazo industrial, de modo que los dos clips se pueden reproducir en bucle sincronizados sin recortes.</p>
+
+  <table class="gantt">
+    <thead>
+      <tr><th>Actor</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10 s</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cobot</td>
+        <td colspan="2"><span class="bar b1"></span></td>
+        <td colspan="9"></td>
+      </tr>
+      <tr>
+        <td>Cinta</td>
+        <td></td>
+        <td colspan="4"><span class="bar b3"></span></td>
+        <td colspan="6"><span class="bar b3"></span></td>
+      </tr>
+      <tr>
+        <td>Tope S1</td>
+        <td colspan="2"></td>
+        <td colspan="3"><span class="bar b4"></span></td>
+        <td colspan="6"></td>
+      </tr>
+      <tr>
+        <td>Brazo ind.</td>
+        <td colspan="2"></td>
+        <td colspan="8"><span class="bar b2"></span></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <thead><tr><th>t (s)</th><th class="mono">Señal</th><th>Actor</th><th>Qué ocurre</th></tr></thead>
+    <tbody>
+      <tr><td>0,0</td><td class="mono">CYCLE_START</td><td>celda</td><td>Arranca el ciclo. Reinicio de contadores.</td></tr>
+      <tr><td>0,0</td><td class="mono">COBOT_FEED</td><td>cobot</td><td>Reproduce <code>Ciclo_Asistencia</code>: toma una pieza del almacén y la deja en <code>INFEED_STATION</code>.</td></tr>
+      <tr><td>1,2</td><td class="mono">PART_ON_BELT</td><td>cobot</td><td>La pieza queda libre sobre la banda: se reemparenta de la herramienta del cobot a la cinta.</td></tr>
+      <tr><td>1,2</td><td class="mono">BELT_RUN</td><td>cinta</td><td>Banda a 0,25 m/s. La pieza recorre 1,73 m hasta la estación de recogida.</td></tr>
+      <tr><td>2,0</td><td class="mono">STOPPER_UP</td><td>cinta</td><td>El tope sube <b>antes</b> de que llegue la pieza. Nunca al mismo tiempo: 0,3 s de margen.</td></tr>
+      <tr><td>2,3</td><td class="mono">PART_AT_PICK</td><td>cinta</td><td>Pieza retenida e inmóvil en <code>PICK_STATION</code>. Posición determinista: el agarre no depende del framerate.</td></tr>
+      <tr><td>2,3</td><td class="mono">ARM_PICK</td><td>brazo</td><td>Inicia <code>Toma_De_Cinta</code>. Su ventana de agarre interna cae en t = 5,4 s de ciclo.</td></tr>
+      <tr><td>5,4</td><td class="mono">PART_GRASPED</td><td>brazo</td><td>Pinza cerrada. La pieza se reemparenta a <code>J6_tool_roll</code> conservando su transformación mundial.</td></tr>
+      <tr><td>5,4</td><td class="mono">STOPPER_DOWN</td><td>cinta</td><td>El tope baja: la banda vuelve a flujo libre para la siguiente pieza.</td></tr>
+      <tr><td>9,8</td><td class="mono">PART_PLACED</td><td>brazo</td><td>Pinza abierta en el palet. La pieza se devuelve a la escena.</td></tr>
+      <tr><td>10,0</td><td class="mono">CYCLE_END</td><td>celda</td><td>Reinicio. Los dos brazos vuelven a Home simultáneamente.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Protocolo de traspaso de pieza</h2>
+  <p>El traspaso es el único punto donde dos activos se tocan, y se resuelve siempre igual: <b>reemparentar conservando la transformación mundial</b>. Nunca copiando coordenadas a mano.</p>
+  <pre>// del cobot a la cinta (t = 1,2 s)
+conveyor.getObjectByName('BELT_surface').attach(part);
+
+// de la cinta al brazo industrial (t = 5,4 s)
+arm.getObjectByName('J6_tool_roll').attach(part);
+
+// del brazo a la escena (t = 9,8 s)
+scene.attach(part);</pre>
+  <p><code>attach()</code> mantiene la posición visible de la pieza al cambiar de padre; <code>add()</code> no, y produce el salto característico de un traspaso mal hecho. Mientras la pieza es hija de un nodo articulado, se mueve con él sin ninguna línea de código adicional.</p>
+
+  <h3>4.1 Reglas de sincronización</h3>
+  <ol>
+    <li><b>El tope siempre sube antes de que llegue la pieza</b>, con al menos 0,3 s de margen. Subirlo al mismo tiempo produce atravesamientos según el framerate.</li>
+    <li><b>El agarre ocurre con la pieza inmóvil.</b> Nunca sobre banda en marcha: la posición dejaría de ser determinista.</li>
+    <li><b>El tope baja cuando la pieza ya está en la pinza</b>, no antes.</li>
+    <li><b>Una pieza en juego por ciclo.</b> Para dos piezas simultáneas hacen falta dos topes y una cola; no está contemplado en este ciclo.</li>
+    <li><b>Un solo reloj.</b> Los tres activos avanzan con el mismo <code>delta</code>; si un activo lleva su propio reloj, las señales derivan.</li>
+  </ol>
+
+  <h2>5. Integración con el código de referencia</h2>
+  <pre>import { Cell, LAYOUT, STATIONS } from './cell-orchestrator.js';
+
+const [cobotGltf, armGltf, convGltf] = await Promise.all([
+  loader.loadAsync('cobot-6dof.glb'),
+  loader.loadAsync('industrial-arm-6dof.glb'),
+  loader.loadAsync('conveyor-belt-2400.glb'),
+]);
+[cobotGltf, armGltf, convGltf].forEach(g => scene.add(g.scene));
+
+const cell = new Cell({
+  cobot:    { root: cobotGltf.scene, mixer: new THREE.AnimationMixer(cobotGltf.scene), THREE },
+  arm:      { root: armGltf.scene,   mixer: new THREE.AnimationMixer(armGltf.scene),   THREE },
+  conveyor: { root: convGltf.scene, THREE },
+});
+
+console.table(cell.diagnose());      // ¿qué se ha cargado realmente?
+
+// engancharse a las señales para mover las piezas propias de la escena
+cell.on('PART_GRASPED', () => armGltf.scene.getObjectByName('J6_tool_roll').attach(part));
+cell.on('PART_PLACED',  () => scene.attach(part));
+
+cell.start();
+
+renderer.setAnimationLoop(() => {
+  cell.update(clock.getDelta());     // ← un solo reloj para los tres activos
+  renderer.render(scene, camera);
+});</pre>
+  <p>El árbitro coloca los tres activos según <code>LAYOUT</code>, lanza los clips en su instante, mueve la banda de forma paramétrica y dispara las señales de la tabla 3. Todo lo específico de la escena (qué pieza, de dónde sale, dónde acaba) se conecta con <code>cell.on(...)</code>, sin tocar los modelos.</p>
+
+  <h2>6. Ampliaciones previstas</h2>
+  <table>
+    <thead><tr><th style="width:32%">Ampliación</th><th>Qué hay que cambiar</th></tr></thead>
+    <tbody>
+      <tr><td>Segunda cinta en serie</td><td>Cargar el mismo GLB otra vez y desplazarlo en X 2,45 m. Añadir un par de señales <code>PART_AT_TRANSFER</code>.</td></tr>
+      <tr><td>Dos brazos sobre la misma cinta</td><td>Añadir un segundo tope a 0,4 m del primero y desdoblar el ciclo en dos ventanas de agarre que no se solapen.</td></tr>
+      <tr><td>Herramienta en el cobot</td><td>Añadir el efector como hijo de <code>TOOL_FLANGE</code>. El cobot no cambia.</td></tr>
+      <tr><td>Ciclo más rápido</td><td>Subir <code>cell.speedScale</code>. Los clips y la banda escalan juntos porque comparten el <code>delta</code>.</td></tr>
+      <tr><td>Trayectorias reales en vez de clips</td><td>Sustituir <code>playOn()</code> por un servo con límite de velocidad por eje, usando los rangos de las tablas de cada activo.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Verificación del escenario conjunto</h2>
+  <ul>
+    <li><code>cell.diagnose()</code> devuelve los tres nodos raíz con sus esquemas y sus clips.</li>
+    <li>Los tres activos apoyan en y = 0 y sus alturas son coherentes: banda a 0,80 m, brazos de 1,05 m y 0,62 m.</li>
+    <li>El brazo industrial alcanza <code>PICK_STATION</code> sin extender del todo el codo, y el cobot alcanza <code>INFEED_STATION</code> igual.</li>
+    <li>Con el ciclo en marcha, la pieza nunca atraviesa el tope ni salta al cambiar de padre.</li>
+    <li>Con <code>speedScale = 0,25</code> el ciclo sigue siendo coherente: confirma que todo depende del tiempo y no del framerate.</li>
+    <li>Ningún volumen de trabajo de un brazo entra en el del otro.</li>
+  </ul>
+</doc-page>
+<script src="./doc-page.js"></script>
+</body>
+</html>

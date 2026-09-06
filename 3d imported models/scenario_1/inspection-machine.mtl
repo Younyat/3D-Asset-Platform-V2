@@ -1,0 +1,89 @@
+# inspection-machine · materiales
+
+newmtl mach_shell
+Ka 0.0000 0.0000 0.0000
+Kd 0.7913 0.7991 0.8148
+Ks 0.2000 0.2000 0.2000
+Ns 110
+d 1.000
+illum 2
+
+newmtl mach_shell_shade
+Ka 0.0000 0.0000 0.0000
+Kd 0.6308 0.6445 0.6654
+Ks 0.2000 0.2000 0.2000
+Ns 100
+d 1.000
+illum 2
+
+newmtl mach_dark
+Ka 0.0000 0.0000 0.0000
+Kd 0.0284 0.0307 0.0343
+Ks 0.2000 0.2000 0.2000
+Ns 80
+d 1.000
+illum 2
+
+newmtl mach_steel
+Ka 0.0000 0.0000 0.0000
+Kd 0.3916 0.4179 0.4452
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.000
+illum 2
+
+newmtl mach_strip_0
+Ka 0.0000 0.0000 0.0000
+Kd 0.7454 0.0409 0.0252
+Ks 0.2000 0.2000 0.2000
+Ns 120
+d 1.000
+illum 2
+
+newmtl mach_strip_1
+Ka 0.0000 0.0000 0.0000
+Kd 0.7454 0.0409 0.0252
+Ks 0.2000 0.2000 0.2000
+Ns 120
+d 1.000
+illum 2
+
+newmtl mach_strip_2
+Ka 0.0000 0.0000 0.0000
+Kd 0.7454 0.0409 0.0252
+Ks 0.2000 0.2000 0.2000
+Ns 120
+d 1.000
+illum 2
+
+newmtl mach_lamp_red
+Ka 0.0000 0.0000 0.0000
+Kd 0.7454 0.0409 0.0252
+Ks 0.2000 0.2000 0.2000
+Ns 130
+d 1.000
+illum 2
+
+newmtl mach_lamp_green
+Ka 0.0000 0.0000 0.0000
+Kd 0.0704 0.4233 0.0782
+Ks 0.2000 0.2000 0.2000
+Ns 130
+d 1.000
+illum 2
+
+newmtl mach_glass
+Ka 0.0000 0.0000 0.0000
+Kd 0.0075 0.0086 0.0103
+Ks 0.2000 0.2000 0.2000
+Ns 168
+d 1.000
+illum 2
+
+newmtl mach_screen
+Ka 0.0000 0.0000 0.0000
+Kd 1.0000 1.0000 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 144
+d 1.000
+illum 2

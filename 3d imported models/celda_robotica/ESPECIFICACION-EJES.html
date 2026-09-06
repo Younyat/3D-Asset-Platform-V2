@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Especificación de ejes · cada joint, su eje y su movimiento</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./doc-style.css">
+<style>
+  .doc .axis { font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+  .doc .ok { color: #1f7a3d; font-weight: 600; }
+  .doc .no { color: #b2261a; font-weight: 600; }
+  .doc table.spec td:nth-child(3) { font-family: 'IBM Plex Mono', monospace; font-size: 8pt; }
+  .doc .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 8px 0 14px; break-inside: avoid; }
+  .doc .two pre { margin: 0; }
+  .doc .two .bad { border-left-color: #b2261a; }
+  .doc .lab { font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 4px; }
+  .doc .lab.no { color: #b2261a; }
+  .doc .lab.ok { color: #1f7a3d; }
+</style>
+</head>
+<body>
+<doc-page margin="0.8in" class="doc">
+  <div slot="footer" class="foot">Especificación de ejes · celda robótica · v1.1</div>
+
+  <p class="kicker">Referencia de ejes · los tres activos</p>
+  <h1>Qué eje mueve cada joint</h1>
+  <p class="sub">Especificación exacta articulación por articulación, y cómo se mueve la cadena en conjunto</p>
+
+  <div class="meta">
+    <span><b>Ámbito</b>Cobot · Brazo industrial · Cinta</span>
+    <span><b>Convención</b>glTF · Y arriba · mano derecha</span>
+    <span><b>Unidades</b>metros · radianes en código</span>
+  </div>
+
+  <h2>1. La regla que evita la descomposición</h2>
+  <p>Cada articulación tiene <b>un solo grado de libertad</b>. Eso significa que en su nodo se escribe <b>una sola componente</b> de una sola propiedad, y las otras dos se dejan intactas para siempre. Si un joint de eje Z recibe también valores en X o en Y, el eslabón se sale de su plano de giro y, como cada hijo hereda el error de su padre, la desviación se multiplica a lo largo de la cadena: la muñeca y la pinza —los últimos eslabones— se descomponen visiblemente mientras la base parece correcta.</p>
+  <p>La descomposición en el extremo no es un fallo del modelo. Es error acumulado en la cadena, y siempre tiene una de estas cuatro causas:</p>
+  <table>
+    <thead><tr><th style="width:38%">Causa</th><th>Cómo se reconoce</th><th>Corrección</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Escribir los tres ejes a la vez</b><br><code>node.rotation.set(x, y, z)</code></td>
+        <td>El extremo se retuerce progresivamente. La base va bien, la pinza gira sobre un eje inesperado.</td>
+        <td>Escribir solo la componente de la tabla 3: <code>node.rotation.z = a</code>. Nunca <code>set()</code>.</td>
+      </tr>
+      <tr>
+        <td><b>Mezclar Euler y cuaternión</b><br><code>rotation</code> + <code>quaternion</code> en el mismo nodo</td>
+        <td>Salta al empezar el clip, o el control manual «pelea» con la animación. Empeora frame a frame.</td>
+        <td>Elegir uno. Con clip activo, no tocar <code>rotation</code>; detener el clip antes del control manual.</td>
+      </tr>
+      <tr>
+        <td><b>Escribir transformaciones de mundo en nodos hijos</b><br><code>getWorldPosition</code> → <code>position</code></td>
+        <td>Las piezas se separan unas de otras y flotan. Peor cuanto más abajo en la cadena.</td>
+        <td>Los joints solo aceptan rotación <b>local</b>. Su <code>position</code> es fija y no se toca nunca.</td>
+      </tr>
+      <tr>
+        <td><b>Acumular en vez de asignar</b><br><code>rotation.z += v</code> cada frame</td>
+        <td>Deriva lenta e irreversible; el brazo «se va» del rango tras unos segundos.</td>
+        <td>Asignar el ángulo absoluto objetivo, no incrementos. Solo los tambores de la cinta acumulan.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two">
+    <div>
+      <div class="lab no">Incorrecto</div>
+      <pre class="bad">// tres ejes a la vez: el error se propaga
+J3.rotation.set(0, 0, a);
+
+// mundo escrito en un hijo: se descompone
+J5.position.copy(target);
+J5.lookAt(target);
+
+// acumulación: deriva
+J2.rotation.z += 0.01;</pre>
+    </div>
+    <div>
+      <div class="lab ok">Correcto</div>
+      <pre>// una sola componente, ángulo absoluto
+J3.rotation.z = a;
+
+// la posición de un joint no se toca jamás
+// (la fija el modelo: es la longitud del eslabón)
+
+// asignar, no acumular
+J2.rotation.z = targetRad;</pre>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Comprobación en dos líneas.</b> Si el extremo se descompone, imprime las tres componentes de
+    un joint intermedio a lo largo del movimiento:
+    <code>console.log(J4.rotation.x, J4.rotation.y, J4.rotation.z)</code>.
+    En un joint de eje Z, <code>x</code> e <code>y</code> deben valer <b>exactamente 0</b> en todo
+    momento. Cualquier valor distinto de cero identifica el joint que está siendo mal escrito.
+  </div>
+
+  <h2>2. Cómo leer la especificación</h2>
+  <table>
+    <tbody>
+      <tr><td style="width:24%"><b>Eje local</b></td><td>El eje del <b>sistema de coordenadas del propio nodo</b>, no del mundo. Al girar un padre, el eje del hijo gira con él: eso es exactamente lo que hace que la cadena funcione. Nunca convertir a ejes de mundo.</td></tr>
+      <tr><td><b>Propiedad</b></td><td>La única componente que se escribe. Todo lo demás en ese nodo permanece con el valor que trae el archivo.</td></tr>
+      <tr><td><b>Signo positivo</b></td><td>Sentido antihorario visto desde el extremo positivo del eje de giro (regla de la mano derecha).</td></tr>
+      <tr><td><b>Rango</b></td><td>Límite mecánico. Fuera de él los eslabones se atraviesan: recortar siempre antes de escribir.</td></tr>
+      <tr><td><b>Movimiento</b></td><td>Qué hace físicamente esa articulación y qué arrastra consigo.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Brazo industrial de 6 ejes + pinza</h2>
+  <p class="axis">IndustrialArm6DOF · alcance 1,05 m</p>
+  <table class="spec">
+    <thead><tr><th>Joint</th><th>Eje local</th><th>Propiedad · única componente</th><th>Rango</th><th>Movimiento y qué arrastra</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="axis">J1_base_yaw</td><td class="axis">Y (vertical)</td>
+        <td>rotation.y = a<br><span class="no">x, z siempre 0</span></td><td>−170° … +170°</td>
+        <td>Gira toda la torreta sobre la base. Arrastra el brazo completo, la muñeca y la pinza. Es el único joint cuyo eje coincide siempre con la vertical del mundo.</td>
+      </tr>
+      <tr>
+        <td class="axis">J2_shoulder_pitch</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−100° … +80°</td>
+        <td>Cabeceo del hombro: levanta y baja el brazo en el plano vertical que J1 haya orientado. Arrastra codo, antebrazo, muñeca y pinza. Es el joint que más masa mueve, de ahí su velocidad más baja.</td>
+      </tr>
+      <tr>
+        <td class="axis">J3_elbow_pitch</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−60° … +145°</td>
+        <td>Cabeceo del codo: acerca o aleja el extremo sin mover el hombro. Junto con J2 define el alcance y la altura del punto de trabajo.</td>
+      </tr>
+      <tr>
+        <td class="axis">J4_forearm_roll</td><td class="axis">Y (eje del antebrazo)</td>
+        <td>rotation.y = a<br><span class="no">x, z siempre 0</span></td><td>−190° … +190°</td>
+        <td>Giro del antebrazo sobre su propio eje longitudinal. No cambia la posición del extremo: solo lo rota. Este es el joint que más se confunde con J6; su efecto se nota en la orientación de la muñeca, no de la pinza.</td>
+      </tr>
+      <tr>
+        <td class="axis">J5_wrist_pitch</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−120° … +120°</td>
+        <td>Cabeceo de la muñeca: inclina la pinza respecto al antebrazo. Es el joint que mantiene la pinza apuntando hacia abajo cuando J2 y J3 cambian.</td>
+      </tr>
+      <tr>
+        <td class="axis">J6_tool_roll</td><td class="axis">Y (eje de la herramienta)</td>
+        <td>rotation.y = a<br><span class="no">x, z siempre 0</span></td><td>−360° … +360°</td>
+        <td>Giro de la pinza sobre su eje de montaje. Orienta las mordazas respecto a la pieza. No mueve el punto de agarre, solo lo rota.</td>
+      </tr>
+      <tr>
+        <td class="axis">G1_finger_L</td><td class="axis">X (traslación)</td>
+        <td>position.x = −x<br><span class="no">y, z: no tocar</span></td><td>−0,048 … −0,014 m</td>
+        <td><b>No rota: traslada.</b> Dedo izquierdo, hacia el centro al cerrar. Su <code>y</code> es la altura de montaje en la carcasa y debe conservarse tal cual.</td>
+      </tr>
+      <tr>
+        <td class="axis">G1_finger_R</td><td class="axis">X (traslación)</td>
+        <td>position.x = +x<br><span class="no">y, z: no tocar</span></td><td>+0,014 … +0,048 m</td>
+        <td>Dedo derecho, <b>siempre en espejo del izquierdo</b>: mismo valor, signo opuesto. Un solo dedo movido descoloca la pinza.</td>
+      </tr>
+    </tbody>
+  </table>
+  <pre>const G_CLOSED = 0.014, G_OPEN = 0.048;
+function setGrip(root, t) {                    // t = 1 abierta · 0 cerrada
+  const x = G_CLOSED + (G_OPEN - G_CLOSED) * Math.min(1, Math.max(0, t));
+  root.getObjectByName('G1_finger_L').position.x = -x;
+  root.getObjectByName('G1_finger_R').position.x =  x;   // espejo obligatorio
+}</pre>
+
+  <h2>4. Cobot colaborativo de 6 ejes</h2>
+  <p class="axis">CollaborativeArm6DOF · alcance 0,92 m</p>
+  <div class="note">
+    <b>Atención al patrón de ejes.</b> El cobot <b>no</b> repite el patrón del brazo industrial. Su
+    muñeca es Z → X → Y, y el eje X de J5 es único en toda la celda. Copiar el código de un brazo al
+    otro sin cambiar los ejes es la causa más frecuente de descomposición del extremo entre dos
+    activos que parecen equivalentes.
+  </div>
+  <table class="spec">
+    <thead><tr><th>Joint</th><th>Eje local</th><th>Propiedad · única componente</th><th>Rango</th><th>Movimiento y qué arrastra</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="axis">J1_base_rotate</td><td class="axis">Y (vertical)</td>
+        <td>rotation.y = a<br><span class="no">x, z siempre 0</span></td><td>−360° … +360°</td>
+        <td>Gira todo el brazo sobre la base. Sin tope mecánico: dos vueltas completas de recorrido.</td>
+      </tr>
+      <tr>
+        <td class="axis">J2_shoulder_lift</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−175° … +175°</td>
+        <td>Elevación del hombro. Rango mucho más amplio que en el brazo industrial: el cobot puede plegarse por detrás de su propia base.</td>
+      </tr>
+      <tr>
+        <td class="axis">J3_elbow</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−160° … +160°</td>
+        <td>Codo. Con J2 forma el par que define alcance y altura.</td>
+      </tr>
+      <tr>
+        <td class="axis">J4_wrist_1</td><td class="axis">Z (transversal)</td>
+        <td>rotation.z = a<br><span class="no">x, y siempre 0</span></td><td>−175° … +175°</td>
+        <td>Cabeceo de muñeca. Tercer y último joint de eje Z: hasta aquí todo ocurre en un mismo plano, el que J1 haya orientado.</td>
+      </tr>
+      <tr>
+        <td class="axis">J5_wrist_2</td><td class="axis"><b>X</b> (longitudinal)</td>
+        <td>rotation.x = a<br><span class="no">y, z siempre 0</span></td><td>−175° … +175°</td>
+        <td><b>Guiñada.</b> Único joint de eje X de la celda: saca la herramienta del plano de trabajo. Es el que da al cobot su libertad de orientación característica.</td>
+      </tr>
+      <tr>
+        <td class="axis">J6_wrist_3</td><td class="axis">Y (eje de la brida)</td>
+        <td>rotation.y = a<br><span class="no">x, z siempre 0</span></td><td>−360° … +360°</td>
+        <td>Giro de la brida de herramienta. Sin tope. Lo que se monte en <code>TOOL_FLANGE</code> hereda los seis ejes.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>El cobot no tiene pinza: termina en <code>TOOL_FLANGE</code>. Si la escena monta un efector ahí, sus ejes propios se documentan aparte y son <b>adicionales</b> a estos seis.</p>
+
+  <h2>5. Cinta transportadora</h2>
+  <p class="axis">ConveyorBelt2400 · transporte en +X</p>
+  <p>La cinta es el único activo cuyo movimiento <b>sí acumula</b>: los tambores giran indefinidamente y la banda se desplaza sin volver a una pose. Por eso aquí se usa <code>-=</code> y no asignación.</p>
+  <table class="spec">
+    <thead><tr><th>Nodo</th><th>Eje local</th><th>Propiedad · única componente</th><th>Relación con la velocidad</th><th>Movimiento</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="axis">R1_drive_roller</td><td class="axis"><b>Z</b></td>
+        <td>rotation.z −= …<br><span class="no">x, y siempre 0</span></td>
+        <td>d / 0,055</td>
+        <td>Tambor motriz. Es un cilindro <b>tumbado sobre Z</b>, así que gira sobre Z: su eje es perpendicular al transporte y horizontal. Girarlo en X lo hace rodar de canto.</td>
+      </tr>
+      <tr>
+        <td class="axis">R2_idler_roller</td><td class="axis"><b>Z</b></td>
+        <td>rotation.z −= …<br><span class="no">x, y siempre 0</span></td>
+        <td>d / 0,055</td>
+        <td>Tambor de retorno. Misma velocidad angular que R1: rodadura sin deslizamiento.</td>
+      </tr>
+      <tr>
+        <td class="axis">BELT_surface</td><td class="axis">U (textura)</td>
+        <td>material.map.offset.x −= …</td>
+        <td>d / 0,12</td>
+        <td>Banda. No se mueve geometría: se desplaza la textura. El paso de nervadura es 0,12 m, de ahí el divisor.</td>
+      </tr>
+      <tr>
+        <td class="axis">S1_stopper</td><td class="axis">Y (traslación)</td>
+        <td>position.y = 0,80 | 0,71<br><span class="no">x, z: no tocar</span></td>
+        <td>recorrido 0,09 m en 0,25 s</td>
+        <td>Tope neumático. Sube para retener la pieza, baja para liberarla. Dos posiciones discretas, no continuo.</td>
+      </tr>
+      <tr>
+        <td class="axis">P1…P4_part</td><td class="axis">X (traslación)</td>
+        <td>position.x += d<br><span class="no">y, z: no tocar</span></td>
+        <td>d = v · dt</td>
+        <td>Piezas transportadas. Su <code>y</code> es la altura sobre la banda y debe conservarse.</td>
+      </tr>
+    </tbody>
+  </table>
+  <pre>const d = speed * dt;                          // m recorridos este frame
+belt.offset.x        -= d / 0.12;              // banda
+R1.rotation.z        -= d / 0.055;             // tambores: eje Z
+R2.rotation.z        -= d / 0.055;</pre>
+
+  <h2>6. Cómo se mueve la cadena en conjunto</h2>
+  <p>Una articulación aislada no significa nada: lo que define una pose es el <b>conjunto de ángulos</b>, y lo que define un movimiento creíble es el orden y la coordinación entre ellos.</p>
+
+  <h3>6.1 Los tres grupos funcionales</h3>
+  <table>
+    <thead><tr><th style="width:22%">Grupo</th><th>Joints</th><th>Qué controla</th><th>Cómo se usa</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Orientación</b></td>
+        <td class="axis">J1</td>
+        <td>Hacia dónde apunta el robot: el plano de trabajo.</td>
+        <td>Se mueve primero y solo. Girar J1 con el brazo extendido barre un volumen enorme; conviene replegar antes.</td>
+      </tr>
+      <tr>
+        <td><b>Posición</b></td>
+        <td class="axis">J2 · J3</td>
+        <td>Alcance y altura del punto de trabajo dentro de ese plano.</td>
+        <td>Siempre <b>coordinados entre sí</b>: se mueven juntos, nunca uno tras otro. Es lo que produce la trayectoria curva característica.</td>
+      </tr>
+      <tr>
+        <td><b>Orientación de herramienta</b></td>
+        <td class="axis">J4 · J5 · J6 <span style="color:#5f6266">(cobot: J4·J5·J6)</span></td>
+        <td>Cómo se presenta la herramienta al llegar al punto.</td>
+        <td>Se mueven <b>durante</b> el desplazamiento de J2/J3, no después: llegar ya orientado ahorra un segundo por ciclo.</td>
+      </tr>
+      <tr>
+        <td><b>Efector</b></td>
+        <td class="axis">G1 <span style="color:#5f6266">(solo brazo industrial)</span></td>
+        <td>Agarre y liberación.</td>
+        <td>Actúa <b>siempre con el brazo detenido</b>. Cerrar la pinza en movimiento es el error que más delata una animación falsa.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>6.2 Secuencia de un movimiento completo</h3>
+  <table>
+    <thead><tr><th>Fase</th><th>Joints activos</th><th>Regla</th></tr></thead>
+    <tbody>
+      <tr><td>1 · Replegar</td><td class="axis">J2 · J3</td><td>Acercar el extremo al eje de la base antes de girar. Reduce el volumen barrido.</td></tr>
+      <tr><td>2 · Orientar</td><td class="axis">J1</td><td>Girar hacia el objetivo. Es el movimiento más lento en tiempo real por la masa implicada.</td></tr>
+      <tr><td>3 · Extender y orientar</td><td class="axis">J2 · J3 + J4 · J5 · J6</td><td>Simultáneos. El extremo llega a destino ya con la herramienta orientada.</td></tr>
+      <tr><td>4 · Aproximación final</td><td class="axis">J2 · J3 · J5</td><td>Descenso vertical corto (2–4 cm) a velocidad reducida. Aquí se corrige la posición fina.</td></tr>
+      <tr><td>5 · Agarre</td><td class="axis">G1</td><td>Brazo completamente detenido. Pausa de 0,2–0,4 s antes y después.</td></tr>
+      <tr><td>6 · Retirada</td><td class="axis">J2 · J3 · J5</td><td>Ascenso vertical antes de cualquier giro. Nunca arrastrar la pieza de lado.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.3 Relaciones entre joints que hay que respetar</h3>
+  <table>
+    <thead><tr><th style="width:34%">Relación</th><th>Por qué</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Brazo industrial:</b><br><code class="axis">J2 + J3 + J5 ≈ 120°</code></td>
+        <td>Mantiene la pinza apuntando hacia abajo mientras J2 y J3 cambian de altura. Es la relación que permite un descenso vertical sin recalcular nada. Si se rompe, la pinza se inclina y el agarre falla.</td>
+      </tr>
+      <tr>
+        <td><b>Cobot:</b><br><code class="axis">J2 + J3 + J4 ≈ 90°</code></td>
+        <td>Equivalente en el cobot: los tres joints de eje Z suman una constante para conservar la orientación de la brida.</td>
+      </tr>
+      <tr>
+        <td><b>J4 y J6 no son intercambiables</b></td>
+        <td>Ambos son giros sobre Y, pero J4 gira el antebrazo completo (arrastra la muñeca) y J6 solo la herramienta. Usar uno por otro coloca la pinza en el sitio correcto con la muñeca torcida.</td>
+      </tr>
+      <tr>
+        <td><b>Los dedos, siempre en espejo</b></td>
+        <td><code>L.x = −x</code> y <code>R.x = +x</code>, con la misma <code>x</code>. Mover uno solo desplaza el centro de agarre y la pieza queda descentrada.</td>
+      </tr>
+      <tr>
+        <td><b>Un solo reloj para toda la celda</b></td>
+        <td>Los tres activos avanzan con el mismo <code>delta</code>. Relojes independientes hacen derivar las señales del ciclo y las piezas se traspasan en el aire.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>6.4 Perfil de velocidad</h3>
+  <p>Cada joint tiene su velocidad máxima (tablas 3 y 4), y el conjunto se mueve al ritmo del más lento: si J1 necesita 0,85 s para su recorrido y J5 solo 0,2 s, el movimiento dura 0,85 s y J5 se interpola estirado sobre ese tiempo. Así todos los joints llegan juntos, que es lo que produce una trayectoria única y limpia en vez de un movimiento por tramos.</p>
+  <pre>function moveAll(joints, target, dt) {
+  // 1 · tiempo que necesita el joint más lento
+  let T = 0;
+  for (const j of joints) {
+    const delta = Math.abs(target[j.id] - j.current);
+    T = Math.max(T, delta / j.maxSpeedDegPerSec);
+  }
+  // 2 · todos avanzan una misma fracción del recorrido: llegan juntos
+  const f = T > 0 ? Math.min(1, dt / T) : 1;
+  for (const j of joints) {
+    j.current += (target[j.id] - j.current) * f;
+    j.node.rotation[j.axis] = j.current * Math.PI / 180;   // una componente
+  }
+}</pre>
+  <p>Rampas de aceleración: <b>0,15–0,25 s</b> en el brazo industrial (movimiento seco, de producción) y <b>0,4–0,6 s</b> en el cobot (movimiento suave, colaborativo). Esa diferencia es lo que distingue visualmente a los dos activos más que su geometría.</p>
+
+  <h2>7. Verificación</h2>
+  <ul>
+    <li>En cada joint, las <b>dos componentes no usadas</b> valen exactamente 0 durante todo el movimiento.</li>
+    <li>La <code>position</code> de ningún joint rotativo cambia nunca: la fija el archivo.</li>
+    <li>Ningún nodo recibe a la vez <code>rotation</code> y <code>quaternion</code>.</li>
+    <li>Los ángulos son asignados en absoluto, no acumulados (salvo los tambores de la cinta).</li>
+    <li><code>Demo_Ejes</code> se reproduce completo en los dos brazos sin que el extremo se descomponga: si el clip va bien y el código propio no, el problema está en el código.</li>
+    <li>Los dedos de la pinza mantienen <code>|L.x| = |R.x|</code> en todo momento.</li>
+    <li>Con la velocidad global al 25 % el movimiento sigue siendo suave y la cadena no deriva.</li>
+  </ul>
+</doc-page>
+<script src="./doc-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Guía de integración · escena industrial</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../_shared/doc-style.css">
+<style>
+  .doc .layout { background: #f5f3ee; border: 1px solid #e2ded6; padding: 13px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 7.6pt; line-height: 1.6;
+    break-inside: avoid; white-space: pre; margin: 10px 0 14px; }
+  .doc .two { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin: 8px 0 14px; break-inside: avoid; }
+  .doc .two pre { margin: 0; }
+  .doc .two .bad { border-left-color: #b2261a; }
+  .doc .lab { font-family: 'IBM Plex Sans', sans-serif; font-size: 8pt; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 4px; }
+  .doc .lab.no { color: #b2261a; } .doc .lab.ok { color: #1f7a3d; }
+</style>
+</head>
+<body>
+<doc-page margin="0.78in" class="doc">
+  <div slot="footer" class="foot">Guía de integración · escena industrial · contrato 1.0</div>
+
+  <p class="kicker">Para el programador de la plataforma</p>
+  <h1>Cómo integrar la escena</h1>
+  <p class="sub">Seis objetos independientes, un contrato común y un escenario donde funcionan juntos</p>
+
+  <div class="meta">
+    <span><b>Objetos</b>6 modelos independientes</span>
+    <span><b>Contrato</b>model-api.js v1.0</span>
+    <span><b>Ciclo maestro</b>12,0 s</span>
+    <span><b>Unidades</b>metros · Y arriba</span>
+  </div>
+
+  <h2>1. La idea en una página</h2>
+  <p>Cada objeto de la escena es un módulo independiente que no conoce a los demás. Todos exportan lo mismo — un objeto <code>MODEL</code> con sus metadatos y una función <code>create(THREE, opts)</code>— y toda instancia expone la misma superficie. Esa uniformidad es lo que permite quitar un objeto, sustituirlo por otro o cargar solo dos de los seis, sin tocar el código que los maneja.</p>
+  <pre>const inst = create(THREE, opts);
+
+inst.root                  // THREE.Group para añadir a la escena
+inst.model                 // metadatos: joints, clips, huella, señales
+inst.setJoint(id, valor)   // escribe UN eje (grados o metros), recortado a límites
+inst.getJoint(id)          // lee el valor actual
+inst.setPose({ ... })      // pose completa de una vez
+inst.playClip(name, {loop})// reproduce una animación incluida
+inst.stopClip()            // libera los ejes para control manual
+inst.update(dt)            // avance por frame — SIEMPRE, o nada se mueve
+inst.signal(name, payload) // entrada de señal externa
+inst.diagnose()            // qué ejes y clips existen realmente
+inst.dispose()             // libera geometrías y materiales</pre>
+  <div class="note">
+    <b>El error número uno.</b> Sin <code>inst.update(dt)</code> dentro del bucle de render nada se
+    mueve, aunque el clip esté «reproduciéndose». Es una línea por objeto, o un bucle sobre el
+    registro. Todo lo demás son detalles.
+  </div>
+
+  <h2>2. Los seis objetos</h2>
+  <table>
+    <thead><tr><th style="width:24%">Modelo</th><th class="mono">id</th><th>Ejes</th><th>Clips</th><th>Papel</th></tr></thead>
+    <tbody>
+      <tr><td><b>Pórtico robot</b></td><td class="mono">gantry-robot-5axis</td><td>5 + garra de 4 dedos</td><td>3</td><td>Alimenta la línea: toma cajas y las deja en la cinta de entrada.</td></tr>
+      <tr><td><b>Máquina de inspección</b></td><td class="mono">inspection-machine</td><td>6 (2 geométricos, 3 canales, 1 continuo)</td><td>2</td><td>Estación de proceso. La cinta la atraviesa por el túnel.</td></tr>
+      <tr><td><b>Tramo de cinta</b></td><td class="mono">conveyor-segment</td><td>4 (2 tambores, tope, velocidad)</td><td>0 · paramétrico</td><td>Transporte. La escena usa dos instancias, A y B.</td></tr>
+      <tr><td><b>Operario</b></td><td class="mono">operator</td><td>9</td><td>4</td><td>Opera el panel de la máquina.</td></tr>
+      <tr><td><b>Caja de cartón</b></td><td class="mono">cargo-box</td><td>1 (tapa)</td><td>1</td><td>Carga. Viaja por la cinta y la manipula el pórtico.</td></tr>
+      <tr><td><b>Pila de cajas</b></td><td class="mono">cargo-box-stack</td><td>0 · configurable</td><td>0</td><td>Almacén. <code>createStack</code> con filas, columnas y fondo.</td></tr>
+    </tbody>
+  </table>
+  <p>El detalle exacto de cada eje —tipo, componente única, rango, velocidad y qué arrastra— está en <a href="./ESPECIFICACION-JOINTS.html">Especificación de joints</a>. Esta guía cubre la integración; ese documento cubre el movimiento.</p>
+
+  <h2>3. Integración mínima que funciona</h2>
+  <pre>import * as THREE from 'three';
+import { create as createGantry } from './01-portico-robot/gantry-robot.js';
+
+const gantry = createGantry(THREE, {});
+gantry.root.position.set(-4.35, 0, -1.15);
+gantry.root.rotation.y = -0.785;
+scene.add(gantry.root);
+
+gantry.playClip('Ciclo_Descarga');
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  gantry.update(clock.getDelta());     // ← imprescindible cada frame
+  renderer.render(scene, camera);
+});</pre>
+
+  <h3>3.1 Control por código en vez de clips</h3>
+  <pre>gantry.stopClip();                       // libera los ejes del clip
+
+gantry.setJoint('G1', 45);               // grados, recortado a ±180
+gantry.setJoint('G3', -0.45);            // metros, recortado a [−0,62 … 0]
+gantry.setJoint('G5', -8);               // garra cerrada
+
+gantry.setPose({ G1: 45, G2: 0.5, G3: -0.45, G4: 90, G5: -8 });
+
+gantry.speedScale = 0.5;                 // cámara lenta, afecta a clips y a tick()</pre>
+
+  <h3>3.2 Servo con límite de velocidad</h3>
+  <p>Para trayectorias propias en vez de clips, la velocidad máxima de cada eje está en <code>MODEL.joints[].speed</code>. El conjunto se mueve al ritmo del eje más lento, de modo que todos llegan a la vez y la trayectoria es una sola curva limpia:</p>
+  <pre>function moveAll(inst, target, dt) {
+  const js = inst.model.joints.filter(j =&gt; j.id in target);
+  let T = 0;
+  for (const j of js) T = Math.max(T, Math.abs(target[j.id] - inst.getJoint(j.id)) / j.speed);
+  const f = T &gt; 0 ? Math.min(1, dt / T) : 1;
+  for (const j of js) {
+    const cur = inst.getJoint(j.id);
+    inst.setJoint(j.id, cur + (target[j.id] - cur) * f);
+  }
+  return T &lt;= dt;                        // true cuando ha llegado
+}</pre>
+
+  <h2>4. El registro: quitar, poner y sustituir</h2>
+  <p>La flexibilidad no está en los modelos: está en cómo la plataforma los guarda. Un <b>registro por ranura</b> —un <code>Map</code> de <code>slot → { instancia, configuración }</code>— es todo lo que hace falta. Quitar es <code>dispose</code> más borrar la entrada; sustituir es quitar y montar otro módulo en la misma ranura, con la misma colocación.</p>
+  <pre>const registry = new Map();
+
+async function mount(slot, cfg) {
+  const mod = await import(cfg.module);
+  const inst = (cfg.create ? mod[cfg.create] : mod.create)(THREE, cfg.opts || {});
+  inst.root.position.set(...cfg.pos);
+  inst.root.rotation.y = cfg.rotY || 0;
+  scene.add(inst.root);
+  registry.set(slot, { inst, cfg });
+  return inst;
+}
+
+function unmount(slot) {
+  const e = registry.get(slot);
+  if (!e) return false;
+  e.inst.dispose();                       // libera geometrías y materiales
+  registry.delete(slot);
+  return true;
+}
+
+async function replace(slot, cfg) {
+  const prev = registry.get(slot)?.cfg || {};
+  unmount(slot);
+  return mount(slot, { ...prev, ...cfg }); // conserva colocación, cambia modelo
+}</pre>
+  <p>Con eso la escena tolera cualquier combinación: cargar solo la cinta, sustituir un tramo de 3,25 m por uno de 4,30 m, cambiar la pila de 2×3×2 por 3×3×2, o quitar el operario. El ciclo maestro comprueba la presencia con <code>get(slot)?.signal(...)</code>, así que una ranura vacía simplemente no recibe órdenes.</p>
+  <p>El archivo <code>06-escena-completa/scene.html</code> es esa idea funcionando: el panel lateral quita, repone y sustituye objetos en vivo, sin recargar.</p>
+
+  <h2>5. Colocación de la escena</h2>
+  <p>Origen del mundo: centro de la máquina de inspección, a nivel del suelo. El flujo va en +X.</p>
+  <table>
+    <thead><tr><th>Ranura</th><th class="mono">Posición (x · y · z)</th><th>Giro Y</th><th>Encara</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">machine</td><td class="mono">0 · 0 · 0</td><td>0</td><td>túnel a lo largo de X</td></tr>
+      <tr><td class="mono">conveyorA</td><td class="mono">−2,30 · 0 · 0</td><td>0</td><td>entrada del túnel</td></tr>
+      <tr><td class="mono">conveyorB</td><td class="mono">2,40 · 0 · 0</td><td>0</td><td>salida del túnel</td></tr>
+      <tr><td class="mono">gantry</td><td class="mono">−4,35 · 0 · −1,15</td><td>−0,785 rad</td><td>cabecera de la cinta A</td></tr>
+      <tr><td class="mono">operator</td><td class="mono">0,30 · 0 · 1,22</td><td>+π/2</td><td>panel de la máquina</td></tr>
+      <tr><td class="mono">boxStack</td><td class="mono">4,55 · 0 · 1,55</td><td>0,18 rad</td><td>final de la línea</td></tr>
+    </tbody>
+  </table>
+
+  <div class="layout">planta de la celda (vista desde arriba, cotas en metros)
+
+        z
+        ↑
+  +1,5  │                              ┌─────┐  pila de cajas
+        │                              │▣▣▣  │  (4,55 · 1,55)
+  +1,2  │              ☺ operario      └─────┘
+        │              (0,30 · 1,22)
+   0    ├───═══════════[MÁQUINA]═══════════════──→ x
+        │   cinta A     túnel 0,78     cinta B
+        │  (−2,30)      (0 · 0 · 0)    (2,40)
+  −1,2  │ ╱ pórtico
+        │╱  (−4,35 · −1,15) giro −45°
+    flujo de material  ──────────────────────→</div>
+
+  <h2>6. Ciclo maestro de 12 segundos</h2>
+  <p>Una caja en juego por ciclo. La coordinación no vive dentro de los modelos: vive en un árbitro externo que emite señales. Ningún objeto lee el estado interno de otro.</p>
+  <table>
+    <thead><tr><th>t (s)</th><th class="mono">Señal</th><th>Destinatario</th><th>Qué ocurre</th></tr></thead>
+    <tbody>
+      <tr><td>0,0</td><td class="mono">CYCLE_START</td><td>escena</td><td>Arranca el ciclo. Reinicio de disparos.</td></tr>
+      <tr><td>0,0</td><td class="mono">GANTRY_PICK</td><td>gantry</td><td>Reproduce <code>Ciclo_Descarga</code>: toma una caja y la lleva a la cinta.</td></tr>
+      <tr><td>4,8</td><td class="mono">BOX_ON_BELT</td><td>gantry</td><td>La caja queda libre: se reemparenta del cabezal a la cinta A.</td></tr>
+      <tr><td>4,8</td><td class="mono">BELT_A_RUN</td><td>conveyorA</td><td>Cinta A a 0,30 m/s.</td></tr>
+      <tr><td>6,4</td><td class="mono">BOX_ENTERING</td><td>machine</td><td>La caja abre la cortina del túnel; vuelve sola por amortiguación.</td></tr>
+      <tr><td>7,0</td><td class="mono">OPERATOR_ACK</td><td>operator</td><td>El operario valida en el panel: <code>Operar_Panel</code>.</td></tr>
+      <tr><td>8,6</td><td class="mono">BELT_B_RUN</td><td>conveyorB</td><td>La caja sale del túnel a la cinta B.</td></tr>
+      <tr><td>9,4</td><td class="mono">INSPECTION_OK</td><td>machine</td><td>Baliza en verde.</td></tr>
+      <tr><td>12,0</td><td class="mono">CYCLE_END</td><td>escena</td><td>Reinicio.</td></tr>
+    </tbody>
+  </table>
+  <pre>const clock = new THREE.Clock();
+let t = 0, fired = new Set();
+
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta() * speedScale;
+  for (const { inst } of registry.values()) inst.update(dt);   // UN SOLO RELOJ
+
+  const prev = t; t += dt;
+  for (const e of CYCLE) {                       // flanco INCLUSIVO en t = 0:
+    const id = `${e.t}:${e.signal}`;             // las señales del instante 0
+    if (fired.has(id)) continue;                 // arrancan el ciclo y con
+    if (e.t &gt;= prev &amp;&amp; e.t &lt; t) {                // `e.t &gt; prev` no se
+      fired.add(id); handle(e);                  // dispararían nunca.
+    }
+  }
+  if (t &gt;= 12) { t = 0; fired.clear(); }         // reinicio exacto, sin residuo
+
+  renderer.render(scene, camera);
+});</pre>
+
+  <h2>7. Traspaso de piezas</h2>
+  <p>El traspaso es el único punto donde dos objetos se tocan, y se resuelve siempre igual: <b>reemparentar conservando la transformación mundial</b>.</p>
+  <div class="two">
+    <div>
+      <div class="lab no">Incorrecto</div>
+      <pre class="bad">// la caja salta de sitio
+cinta.root.add(caja.root);
+caja.root.position.copy(pos);</pre>
+    </div>
+    <div>
+      <div class="lab ok">Correcto</div>
+      <pre>// conserva la posición visible
+cinta.root.attach(caja.root);
+cinta.addCargo(caja.root);</pre>
+    </div>
+  </div>
+  <p>Mientras la caja es hija de un nodo articulado, se mueve con él sin ninguna línea adicional. Para que la cinta la haga avanzar hace falta además registrarla con <code>addCargo()</code>: es lo que distingue una caja transportada de una caja apoyada.</p>
+
+  <h2>8. Diagnóstico</h2>
+  <p>Antes de escribir lógica, confirmar qué ha importado realmente la plataforma:</p>
+  <pre>console.table(inst.diagnose());
+// { id, root, joints: { G1: true, ... }, clips: [...], values: {...} }</pre>
+  <table>
+    <thead><tr><th style="width:34%">Síntoma</th><th>Causa</th><th>Corrección</th></tr></thead>
+    <tbody>
+      <tr><td>El objeto se ve pero está inmóvil</td><td>Falta <code>update(dt)</code> en el bucle</td><td>Una llamada por objeto y frame. Es la causa del 80 % de los casos.</td></tr>
+      <tr><td>El clip no cambia nada</td><td>Se llama a <code>setJoint</code> a la vez que corre el clip</td><td><code>stopClip()</code> antes del control manual; el clip sobrescribe cada frame.</td></tr>
+      <tr><td>El extremo se descompone</td><td>Se escriben los tres ejes o se acumula</td><td>Usar siempre <code>setJoint</code>; nunca <code>rotation.set()</code> ni <code>+=</code>.</td></tr>
+      <tr><td>Un eje devuelve <code>undefined</code></td><td>El id no existe en ese modelo</td><td>Los ids no son intercambiables entre modelos: leer <code>MODEL.joints</code>.</td></tr>
+      <tr><td>La cinta no transporta</td><td>La caja no está registrada</td><td><code>conv.addCargo(caja.root)</code> además de emparentarla.</td></tr>
+      <tr><td>Los tambores ruedan de canto</td><td>Se giran en X</td><td>Son cilindros tumbados sobre Z: <code>rotation.z</code>.</td></tr>
+      <tr><td>La escena se ralentiza al sustituir objetos</td><td>No se llama a <code>dispose()</code></td><td>El registro debe liberar geometrías y materiales al desmontar.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. Exportar a otras plataformas</h2>
+  <p>Cada visor de <code>viewers/</code> lleva un exportador: <b>Download GLB</b> produce el objeto con su jerarquía de nodos nombrada, materiales PBR, clips de animación y los metadatos del modelo en <code>userData</code> (campo <code>extras</code> del glTF). El OBJ es solo estático: no soporta jerarquía ni animación.</p>
+  <table>
+    <thead><tr><th style="width:20%">Destino</th><th>Notas</th></tr></thead>
+    <tbody>
+      <tr><td><b>three.js</b></td><td>Uso directo de los módulos, sin exportar. Es el camino recomendado: conserva el contrato y los canales no geométricos (luces, pantalla, textura de banda), que el GLB no puede llevar.</td></tr>
+      <tr><td><b>Unity</b></td><td>Importar el GLB con glTFast. Escala 1 (metros). Los ejes <code>channel</code> no viajan: reimplementarlos con la tabla de la especificación.</td></tr>
+      <tr><td><b>Unreal</b></td><td>Importar con Interchange, escala 100 (centímetros). Mano izquierda: verificar signos con <code>Demo_Ejes</code>.</td></tr>
+      <tr><td><b>Blender</b></td><td>Importación directa del GLB. Reexportar siempre con +Y up y sin aplicar transformaciones a los nodos articulados.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <b>Variante escalada.</b> Todos los modelos aceptan escala uniforme en el nodo raíz sin romper
+    nada: <code>inst.root.scale.setScalar(100)</code> da centímetros. Los valores de
+    <code>setJoint</code> siguen siendo grados y metros — el contrato es independiente de la escala
+    de presentación.
+  </div>
+
+  <h2>10. Añadir un objeto nuevo</h2>
+  <p>Un modelo nuevo encaja en la escena si cumple el contrato. El esqueleto mínimo:</p>
+  <pre>import { ModelBase, makeHelpers } from '../_shared/model-api.js';
+
+export const MODEL = {
+  id: 'mi-objeto', version: '1.0', label: 'Mi objeto',
+  rootName: 'MiObjeto', units: 'meters', up: 'Y',
+  footprint: { width: 1, depth: 1, height: 1 },
+  joints: [
+    { id: 'A1', name: 'A1_yaw', type: 'revolute', axis: 'Y',
+      label: 'A1 · Giro', limits: [-90, 90], speed: 60, home: 0, unit: '°',
+      moves: 'Qué hace y qué arrastra.' },
+  ],
+  clips: [{ name: 'Ciclo', duration: 4, loop: true, does: 'Qué hace.' }],
+  signals: { RUN: (m) => m.playClip('Ciclo') },
+  interop: { provides: [], consumes: ['RUN'], pairsWith: [] },
+};
+
+export function create(THREE, opts = {}) { return new MiObjeto(THREE, opts); }
+
+class MiObjeto extends ModelBase {
+  constructor(THREE, opts) {
+    super(THREE, MODEL, opts);
+    const { box } = makeHelpers(THREE);
+    const A1 = new THREE.Group(); A1.name = 'A1_yaw';
+    this.root.add(A1); this.bind('A1', A1);
+    A1.add(box(0.4, 0.4, 0.4, new THREE.MeshStandardMaterial(), 'cuerpo'));
+    this.buildClip('Ciclo', [{ t: 0, A1: 0 }, { t: 2, A1: 90 }, { t: 4, A1: 0 }]);
+    this.goHome();
+  }
+  tick(dt) { /* movimiento paramétrico, si lo hay */ }
+}</pre>
+  <p>Con eso el visor genérico lo muestra con sus sliders y sus clips sin escribir interfaz, el registro lo monta en cualquier ranura, y el ciclo maestro puede enviarle señales. No hace falta nada más.</p>
+
+  <h2>11. Contenido del paquete</h2>
+  <table>
+    <thead><tr><th class="mono" style="width:32%">Carpeta</th><th>Qué contiene</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">_shared/</td><td><code>model-api.js</code> (el contrato) · <code>viewer-boot.js</code> (visor genérico) · <code>rig-ui.js</code> · <code>three-d-stage.js</code> (visor y exportador) · <code>doc-page.js</code> · <code>doc-style.css</code></td></tr>
+      <tr><td class="mono">01-portico-robot/</td><td>Modelo del pórtico y su visor.</td></tr>
+      <tr><td class="mono">02-maquina-inspeccion/</td><td>Modelo de la máquina y su visor.</td></tr>
+      <tr><td class="mono">03-cinta-transportadora/</td><td>Modelo del tramo y dos visores, A y B.</td></tr>
+      <tr><td class="mono">04-operario/</td><td>Modelo del operario y su visor.</td></tr>
+      <tr><td class="mono">05-caja-y-pila/</td><td>Caja unitaria y pila configurable, con dos visores.</td></tr>
+      <tr><td class="mono">06-escena-completa/</td><td><code>scene.html</code> y <code>scene-boot.js</code>: los seis objetos juntos, ciclo maestro y editor de sustitución en vivo.</td></tr>
+      <tr><td class="mono">docs/</td><td>Esta guía y la especificación de joints.</td></tr>
+    </tbody>
+  </table>
+  <p>Cada visor abre directamente en el navegador (necesita conexión: three.js se carga desde CDN) y descarga su objeto en GLB u OBJ.</p>
+</doc-page>
+<script src="../_shared/doc-page.js"></script>
+</body>
+</html>

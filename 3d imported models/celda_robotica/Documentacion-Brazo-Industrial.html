@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Brazo industrial 6 ejes + pinza · documentación del rig</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./doc-style.css">
+</head>
+<body>
+<doc-page margin="0.85in" class="doc">
+  <div slot="footer" class="foot">Brazo industrial 6 ejes + pinza · rig 1.1 · celda robótica</div>
+
+  <p class="kicker">Activo 2 de 3 · independiente</p>
+  <h1>Brazo industrial de 6 ejes con pinza</h1>
+  <p class="sub">Rig, articulaciones y animaciones · objeto autónomo, preparado para compartir escenario</p>
+
+  <div class="meta">
+    <span><b>Nodo raíz</b>IndustrialArm6DOF</span>
+    <span><b>Ejes</b>6 rotativos + pinza</span>
+    <span><b>Alcance</b>≈ 1,05 m</span>
+    <span><b>Carga</b>10 kg</span>
+    <span><b>Efector</b>pinza paralela de 2 dedos</span>
+  </div>
+
+  <div class="note" style="margin-top:0"><b>Si el extremo del brazo se descompone durante el movimiento</b>, la referencia exacta de qué eje mueve cada joint y cómo se coordinan entre sí está en <a href="./ESPECIFICACION-EJES.html">Especificación de ejes</a>.</div>
+
+  <h2>1. Qué es este activo</h2>
+  <p>Brazo industrial de fundición blanca con seis ejes rotativos y pinza paralela integrada. Estructura clásica de robot de célula: base atornillada al suelo, torreta giratoria, brazo y antebrazo con nervios de refuerzo, giro de antebrazo, muñeca de cabeceo y giro de herramienta. La pinza es el último eslabón de la cadena y actúa como una mano.</p>
+  <p>Frente al cobot, este brazo es más rígido y más rápido: ciclos cortos y repetitivos de toma y depósito. Es un archivo independiente y se anima por separado.</p>
+
+  <h2>2. Convenciones</h2>
+  <table>
+    <tbody>
+      <tr><td style="width:30%"><b>Unidades</b></td><td>metros (1 unidad = 1 m)</td></tr>
+      <tr><td><b>Orientación</b></td><td>Y arriba, mano derecha (convención glTF)</td></tr>
+      <tr><td><b>Origen</b></td><td>centro de la placa base, apoyada en y = 0</td></tr>
+      <tr><td><b>Altura en Home</b></td><td>≈ 1,05 m · alcance horizontal ≈ 0,95 m</td></tr>
+      <tr><td><b>Frente del robot</b></td><td>+X con J1 = 0° (la pinza mira hacia +X)</td></tr>
+      <tr><td><b>Punto de herramienta</b></td><td>entre las mordazas, ≈ 0,20 m sobre la brida</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Jerarquía de nodos</h2>
+  <div class="tree">IndustrialArm6DOF
+└── BASE_fixed                      placa, pies, pedestal (estática)
+    └── J1_base_yaw                 giro de base · eje Y
+        └── J2_shoulder_pitch       hombro · eje Z
+            └── J3_elbow_pitch      codo · eje Z
+                └── J4_forearm_roll giro de antebrazo · eje Y
+                    └── J5_wrist_pitch      cabeceo de muñeca · eje Z
+                        └── J6_tool_roll    giro de herramienta · eje Y
+                            └── GRIPPER_body        carcasa de la pinza
+                                ├── G1_finger_L     dedo izq. · traslación X
+                                └── G1_finger_R     dedo der. · traslación X</div>
+  <p>Un solo ángulo por articulación; los hijos siguen al padre. La pinza no rota: sus dedos <b>trasladan</b> en el eje X local, siempre en espejo.</p>
+
+  <h2>4. Tabla de articulaciones</h2>
+  <table>
+    <thead><tr><th>Eje</th><th class="mono">Nodo</th><th>Tipo</th><th>Propiedad</th><th>Rango</th><th>Vel. máx.</th><th>Home</th></tr></thead>
+    <tbody>
+      <tr><td>J1</td><td class="mono">J1_base_yaw</td><td>rotativa Y</td><td class="mono">rotation.y</td><td>−170° … +170°</td><td>200 °/s</td><td>0°</td></tr>
+      <tr><td>J2</td><td class="mono">J2_shoulder_pitch</td><td>rotativa Z</td><td class="mono">rotation.z</td><td>−100° … +80°</td><td>150 °/s</td><td>−20°</td></tr>
+      <tr><td>J3</td><td class="mono">J3_elbow_pitch</td><td>rotativa Z</td><td class="mono">rotation.z</td><td>−60° … +145°</td><td>170 °/s</td><td>+70°</td></tr>
+      <tr><td>J4</td><td class="mono">J4_forearm_roll</td><td>rotativa Y</td><td class="mono">rotation.y</td><td>−190° … +190°</td><td>300 °/s</td><td>0°</td></tr>
+      <tr><td>J5</td><td class="mono">J5_wrist_pitch</td><td>rotativa Z</td><td class="mono">rotation.z</td><td>−120° … +120°</td><td>300 °/s</td><td>+40°</td></tr>
+      <tr><td>J6</td><td class="mono">J6_tool_roll</td><td>rotativa Y</td><td class="mono">rotation.y</td><td>−360° … +360°</td><td>420 °/s</td><td>0°</td></tr>
+      <tr><td>G1</td><td class="mono">G1_finger_L / _R</td><td>lineal X</td><td class="mono">position.x</td><td>0,014 … 0,048 m</td><td>0,15 m/s</td><td>abierta</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.1 Pinza (G1)</h3>
+  <table>
+    <thead><tr><th>Estado</th><th class="mono">finger_L.position.x</th><th class="mono">finger_R.position.x</th><th>Apertura entre mordazas</th></tr></thead>
+    <tbody>
+      <tr><td>Abierta (100 %)</td><td class="mono">−0,048</td><td class="mono">+0,048</td><td>0,096 m</td></tr>
+      <tr><td>Cerrada (0 %)</td><td class="mono">−0,014</td><td class="mono">+0,014</td><td>0,028 m</td></tr>
+    </tbody>
+  </table>
+  <p>Interpolación lineal: <code>x = 0,014 + 0,034 · t</code>, con <code>t = 1</code> abierta y <code>t = 0</code> cerrada. Para sujetar una pieza, cerrar hasta que la apertura iguale su ancho y emparentar la pieza a <code>J6_tool_roll</code> mientras dure el agarre.</p>
+
+  <h3>4.2 Longitudes de eslabón</h3>
+  <table>
+    <tbody>
+      <tr><td style="width:40%">Base → J1</td><td class="mono">0,228 m</td></tr>
+      <tr><td>J1 → J2</td><td class="mono">0,155 m (offset X 0,01)</td></tr>
+      <tr><td>J2 → J3 (brazo)</td><td class="mono">0,420 m</td></tr>
+      <tr><td>J3 → J4</td><td class="mono">0,200 m</td></tr>
+      <tr><td>J4 → J5 (antebrazo)</td><td class="mono">0,185 m</td></tr>
+      <tr><td>J5 → J6</td><td class="mono">0,075 m</td></tr>
+      <tr><td>J6 → punta de mordaza</td><td class="mono">0,195 m</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Clips de animación</h2>
+  <table>
+    <thead><tr><th class="mono">Clip</th><th>Duración</th><th>Bucle</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Toma_De_Cinta</td><td>10,0 s</td><td>sí</td><td>Toma una pieza del frente (J1 = 0°, posición de la cinta) y la deposita en el lateral (J1 = 95°). Es el clip de integración con la cinta.</td></tr>
+      <tr><td class="mono">Paletizado_4_Posiciones</td><td>13,4 s</td><td>sí</td><td>Tres depósitos en posiciones distintas (J1 = 0°, 70°, 120°) con giro de herramienta alterno, como en un palet.</td></tr>
+      <tr><td class="mono">Demo_Ejes</td><td>17,6 s</td><td>sí</td><td>Cada eje barre su rango completo en orden J1→J6 y la pinza abre y cierra al final. Verificación de importación.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.1 Fases de «Toma de cinta»</h3>
+  <table>
+    <thead><tr><th>t (s)</th><th>Fase</th><th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>Pinza</th></tr></thead>
+    <tbody>
+      <tr><td>0,0</td><td>Home / espera</td><td>0°</td><td>−20°</td><td>70°</td><td>0°</td><td>40°</td><td>abierta</td></tr>
+      <tr><td>1,3</td><td>Aproximación a la cinta</td><td>0°</td><td>10°</td><td>75°</td><td>0°</td><td>35°</td><td>abierta</td></tr>
+      <tr><td>2,3</td><td>Descenso sobre la pieza</td><td>0°</td><td>32°</td><td>72°</td><td>0°</td><td>16°</td><td>abierta</td></tr>
+      <tr><td>3,1</td><td><b>Cierre (agarre)</b></td><td>0°</td><td>32°</td><td>72°</td><td>0°</td><td>16°</td><td>cerrada</td></tr>
+      <tr><td>4,0</td><td>Elevación</td><td>0°</td><td>10°</td><td>75°</td><td>0°</td><td>35°</td><td>cerrada</td></tr>
+      <tr><td>5,6</td><td>Transferencia al lateral</td><td>95°</td><td>10°</td><td>75°</td><td>90°</td><td>35°</td><td>cerrada</td></tr>
+      <tr><td>6,7</td><td>Descenso en destino</td><td>95°</td><td>32°</td><td>72°</td><td>90°</td><td>16°</td><td>cerrada</td></tr>
+      <tr><td>7,5</td><td><b>Apertura (suelta)</b></td><td>95°</td><td>32°</td><td>72°</td><td>90°</td><td>16°</td><td>abierta</td></tr>
+      <tr><td>8,4</td><td>Retirada</td><td>95°</td><td>10°</td><td>75°</td><td>90°</td><td>35°</td><td>abierta</td></tr>
+      <tr><td>10,0</td><td>Retorno a Home</td><td>0°</td><td>−20°</td><td>70°</td><td>0°</td><td>40°</td><td>abierta</td></tr>
+    </tbody>
+  </table>
+  <p>Eventos de agarre y liberación: <b>t = 3,1 s</b> y <b>t = 7,5 s</b>. La ventana de toma (fases 1,3 → 4,0 s) es la que debe coincidir con la pieza detenida en la cinta.</p>
+
+  <h2>6. Cómo moverlo</h2>
+  <pre>const gltf = await new GLTFLoader().loadAsync('industrial-arm-6dof.glb');
+scene.add(gltf.scene);
+
+const mixer = new THREE.AnimationMixer(gltf.scene);
+mixer.clipAction(THREE.AnimationClip.findByName(gltf.animations, 'Toma_De_Cinta'))
+     .setLoop(THREE.LoopRepeat).play();
+
+// control eje por eje
+gltf.scene.getObjectByName('J2_shoulder_pitch').rotation.z = THREE.MathUtils.degToRad(30);
+
+// pinza: traslación en espejo, nunca rotación
+const t = 0;                                   // 0 cerrada · 1 abierta
+const x = 0.014 + 0.034 * t;
+gltf.scene.getObjectByName('G1_finger_L').position.x = -x;
+gltf.scene.getObjectByName('G1_finger_R').position.x =  x;
+
+mixer.update(clock.getDelta());                // cada frame</pre>
+
+  <h3>6.1 Reglas de movimiento</h3>
+  <ol>
+    <li>Recortar los ángulos contra los rangos de la tabla 4: fuera de rango los eslabones se atraviesan.</li>
+    <li>Perfil de velocidad industrial: rampas cortas (0,15–0,25 s) y velocidad alta en el tramo medio. Es lo que lo diferencia visualmente del cobot.</li>
+    <li>Orden: J1 (orientar) → J2/J3 (extender) → J4/J5/J6 (orientar herramienta) → G1 (pinza, con el brazo detenido).</li>
+    <li>Para bajar en vertical sobre una pieza, mantener <code>J2 + J3 + J5 ≈ 120°</code> mientras cambian J2 y J3: conserva la pinza apuntando hacia abajo.</li>
+    <li>Dejar 0,2–0,4 s de pausa antes y después de cerrar la pinza.</li>
+  </ol>
+
+  <h2>7. Papel en el escenario conjunto</h2>
+  <p>Papel previsto: <b>toma desde la cinta y depósito en palet</b>. Se coloca al costado de la cinta, encarando la estación de recogida. Posición recomendada: base en <code>(0,78 · 0 · −0,72)</code> respecto al origen de la cinta, sin giro (su frente +X queda mirando la banda tras ajustar J1 = 0°).</p>
+  <p>El clip <code>Toma_De_Cinta</code> está temporizado para el ciclo de 10 s de la celda: la ventana de agarre (t = 2,3 → 4,0 s) coincide con la pieza retenida por el tope de la cinta. Ver <a href="./Documentacion-Escenario-Conjunto.html">Documentación del escenario conjunto</a>.</p>
+
+  <h2>8. Verificación tras importar</h2>
+  <ul>
+    <li>Existen los diez nodos con nombre exacto, en el orden de la sección 3.</li>
+    <li>Los tres clips aparecen con sus duraciones: 10,0 / 13,4 / 17,6 s.</li>
+    <li><code>Demo_Ejes</code> se reproduce completo sin colisiones entre eslabones.</li>
+    <li>La pinza abre y cierra en espejo; los dedos no se cruzan en el centro.</li>
+    <li>El brazo mide ≈ 1,05 m en Home y apoya en y = 0.</li>
+    <li>Cinco materiales PBR con nombre: <code>cast_white</code>, <code>cast_white_shade</code>, <code>machined_alu</code>, <code>bolt_dark</code>, <code>grip_pad</code>.</li>
+  </ul>
+</doc-page>
+<script src="./doc-page.js"></script>
+</body>
+</html>

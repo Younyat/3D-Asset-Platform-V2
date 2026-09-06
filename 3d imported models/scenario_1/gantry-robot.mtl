@@ -1,0 +1,41 @@
+# gantry-robot · materiales
+
+newmtl gantry_grey
+Ka 0.0000 0.0000 0.0000
+Kd 0.7913 0.7991 0.8148
+Ks 0.2000 0.2000 0.2000
+Ns 100
+d 1.000
+illum 2
+
+newmtl gantry_steel
+Ka 0.0000 0.0000 0.0000
+Kd 0.3231 0.3515 0.3813
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.000
+illum 2
+
+newmtl gantry_yellow_shade
+Ka 0.0000 0.0000 0.0000
+Kd 0.6939 0.3916 0.0048
+Ks 0.2000 0.2000 0.2000
+Ns 104
+d 1.000
+illum 2
+
+newmtl gantry_yellow
+Ka 0.0000 0.0000 0.0000
+Kd 0.8879 0.5271 0.0097
+Ks 0.2000 0.2000 0.2000
+Ns 116
+d 1.000
+illum 2
+
+newmtl gantry_dark
+Ka 0.0000 0.0000 0.0000
+Kd 0.0423 0.0437 0.0467
+Ks 0.2000 0.2000 0.2000
+Ns 60
+d 1.000
+illum 2

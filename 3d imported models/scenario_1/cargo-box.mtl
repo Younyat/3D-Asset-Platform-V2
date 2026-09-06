@@ -1,0 +1,33 @@
+# cargo-box · materiales
+
+newmtl box_carton
+Ka 0.0000 0.0000 0.0000
+Kd 0.5711 0.3419 0.1384
+Ks 0.2000 0.2000 0.2000
+Ns 44
+d 1.000
+illum 2
+
+newmtl box_carton_shade
+Ka 0.0000 0.0000 0.0000
+Kd 0.4342 0.2542 0.0931
+Ks 0.2000 0.2000 0.2000
+Ns 40
+d 1.000
+illum 2
+
+newmtl box_tape
+Ka 0.0000 0.0000 0.0000
+Kd 0.6939 0.5089 0.2918
+Ks 0.2000 0.2000 0.2000
+Ns 76
+d 1.000
+illum 2
+
+newmtl box_label
+Ka 0.0000 0.0000 0.0000
+Kd 1.0000 1.0000 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 60
+d 1.000
+illum 2

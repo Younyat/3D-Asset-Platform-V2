@@ -1,0 +1,35 @@
+BRAZO ROBOT INDUSTRIAL - rig animado v1.0
+==========================================
+
+CONTENIDO
+  robot-arm.html                  Visor 3D interactivo + exportador (abrir en el navegador)
+  robot-arm.js                    Modelo, rig de 6 ejes y clips de animacion
+  three-d-stage.js                Componente del visor (luces, camara, exportacion OBJ/GLB)
+  Documentacion-Brazo-Robot.html  Documentacion tecnica del rig (abrir en el navegador)
+  doc-page.js                     Componente de maquetacion de la documentacion
+
+COMO OBTENER EL OBJETO 3D
+  1. Abrir robot-arm.html en un navegador (requiere conexion a internet:
+     three.js se carga desde CDN).
+  2. Boton "Download GLB"      -> brazo-robot-industrial.glb
+     Incluye geometria, materiales PBR, jerarquia de articulaciones con nombre,
+     los 3 clips de animacion y los metadatos del rig (ejes, limites, unidades).
+     ESTE ES EL ARCHIVO PARA INTERCAMBIO CON OTRAS PLATAFORMAS.
+  3. Boton "Download OBJ + MTL" -> version estatica, sin jerarquia ni animacion.
+
+EJES
+  J1_base_yaw          rotativa  Y   -170 .. +170
+  J2_shoulder_pitch    rotativa  Z    -60 ..  +95
+  J3_elbow_pitch       rotativa  Z    -20 .. +150
+  J4_wrist_pitch       rotativa  Z   -110 .. +110
+  J5_tool_roll         rotativa  Y   -180 .. +180
+  J6_gripper_finger_L / _R  lineal X  0.032 .. 0.085 m  (pinza, ultimo eslabon)
+
+CLIPS
+  Ciclo_Pick_And_Place  10.0 s  bucle
+  Ir_A_Home              2.0 s  una vez
+  Demo_Ejes             16.2 s  bucle (verificacion de ejes)
+
+Unidades: metros. Y arriba. Origen en el centro de la base, apoyada en y = 0.
+Detalle completo de integracion (three.js, Unity, Unreal, Blender) en
+Documentacion-Brazo-Robot.html

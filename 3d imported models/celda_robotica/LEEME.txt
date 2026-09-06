@@ -1,0 +1,104 @@
+CELDA ROBOTICA - 3 ACTIVOS 3D INDEPENDIENTES - v1.0
+====================================================
+
+EMPIEZA AQUI SI EL EXTREMO DEL BRAZO SE DESCOMPONE
+  ESPECIFICACION-EJES.html   Que eje mueve cada joint, una componente por
+  joint, y como se coordinan en conjunto. Las 4 causas de la descomposicion
+  del extremo estan en su seccion 1.
+
+  Resumen: cada articulacion tiene UN grado de libertad. Se escribe UNA sola
+  componente y las otras dos quedan a 0 para siempre. Si un joint de eje Z
+  recibe algo en X o en Y, el error lo hereda cada hijo y se multiplica: la
+  base parece bien y la pinza se descompone.
+     MAL:  J3.rotation.set(0, 0, a)      tres ejes a la vez
+     MAL:  J2.rotation.z += 0.01         acumular en vez de asignar
+     MAL:  rotation y quaternion en el mismo nodo
+     MAL:  escribir position o transformaciones de mundo en un joint
+     BIEN: J3.rotation.z = a             una componente, angulo absoluto
+  Comprobacion: en un joint de eje Z, rotation.x y rotation.y deben valer
+  exactamente 0 en todo momento. El primero que no lo cumpla es el culpable.
+
+Tres objetos 3D separados, cada uno con su rig completo y su documentacion.
+Ninguno depende de los otros. Preparados para funcionar en el mismo escenario.
+
+ACTIVO 1 · COBOT COLABORATIVO 6 EJES  (naranja)
+  Visor:  cobot-arm.html        ->  "Download GLB"
+  Doc:    Documentacion-Cobot.html
+  Ejes:   J1_base_rotate    Y   -360 .. +360   180 deg/s
+          J2_shoulder_lift  Z   -175 .. +175   180 deg/s
+          J3_elbow          Z   -160 .. +160   180 deg/s
+          J4_wrist_1        Z   -175 .. +175   225 deg/s
+          J5_wrist_2        X   -175 .. +175   225 deg/s
+          J6_wrist_3        Y   -360 .. +360   225 deg/s
+          TOOL_FLANGE = punto de montaje de herramienta (ISO 9409-1-50-4-M6)
+  Clips:  Ciclo_Asistencia 10.0 s · Guiado_Manual 6.0 s · Demo_Ejes 16.6 s
+  Alcance 0.92 m · carga 5 kg · altura en Home 0.62 m
+
+ACTIVO 2 · BRAZO INDUSTRIAL 6 EJES + PINZA  (blanco)
+  Visor:  industrial-arm.html   ->  "Download GLB"
+  Doc:    Documentacion-Brazo-Industrial.html
+  Ejes:   J1_base_yaw        Y   -170 .. +170   200 deg/s
+          J2_shoulder_pitch  Z   -100 ..  +80   150 deg/s
+          J3_elbow_pitch     Z    -60 .. +145   170 deg/s
+          J4_forearm_roll    Y   -190 .. +190   300 deg/s
+          J5_wrist_pitch     Z   -120 .. +120   300 deg/s
+          J6_tool_roll       Y   -360 .. +360   420 deg/s
+          G1_finger_L / _R   X (lineal, espejo)  0.014 .. 0.048 m
+  Clips:  Toma_De_Cinta 10.0 s · Paletizado_4_Posiciones 13.4 s
+          Demo_Ejes 17.6 s
+  Alcance 1.05 m · carga 10 kg · altura en Home 1.05 m
+
+ACTIVO 3 · CINTA TRANSPORTADORA 2400 mm
+  Visor:  conveyor.html         ->  "Download GLB"
+  Doc:    Documentacion-Cinta.html
+  Movimiento PARAMETRICO (no por keyframes). Con d = velocidad * dt:
+          BELT_surface      map.offset.x -= d / 0.12
+          R1_drive_roller   rotation.z   -= d / 0.055   (eje de giro Z)
+          R2_idler_roller   rotation.z   -= d / 0.055
+          S1_stopper        position.y = 0.80 (subido) / 0.71 (bajado)
+          P1..P4_part       position.x += d
+  Estaciones (marcos vacios): INFEED_STATION (-0.95) · PICK_STATION (0.78)
+  Largo 2.40 m · ancho util 0.50 m · altura de banda 0.80 m
+  Velocidad nominal 0.25 m/s · maxima 0.60 m/s
+
+EJES POR JOINT (resumen · detalle en ESPECIFICACION-EJES.html)
+  Brazo industrial:  J1=Y  J2=Z  J3=Z  J4=Y  J5=Z  J6=Y   G1=X (traslacion)
+  Cobot:             J1=Y  J2=Z  J3=Z  J4=Z  J5=X  J6=Y
+  Cinta:             R1=Z  R2=Z  S1=Y (traslacion)  piezas=X (traslacion)
+  OJO: los dos brazos NO comparten patron de ejes. El cobot tiene J4=Z y
+  J5=X; el brazo industrial J4=Y y J5=Z. Copiar el codigo de uno al otro sin
+  cambiar los ejes descompone el extremo.
+
+RELACIONES A RESPETAR
+  Brazo industrial:  J2 + J3 + J5 ~= 120   (pinza apuntando hacia abajo)
+  Cobot:             J2 + J3 + J4 ~=  90   (brida orientada)
+  Pinza:             |L.x| = |R.x| siempre (espejo)
+  Celda:             un solo reloj (delta) para los tres activos
+
+FUNCIONAMIENTO CONJUNTO
+  Doc:    Documentacion-Escenario-Conjunto.html
+  Codigo: cell-orchestrator.js   (arbitro externo, no forma parte de los rigs)
+  Ciclo maestro de 10 s, una pieza en juego:
+    0.0 s  COBOT_FEED     el cobot alimenta INFEED
+    1.2 s  BELT_RUN       banda a 0.25 m/s
+    2.0 s  STOPPER_UP     el tope sube ANTES de que llegue la pieza
+    2.3 s  ARM_PICK       el brazo industrial inicia la toma
+    5.4 s  PART_GRASPED   pinza cerrada + STOPPER_DOWN
+    9.8 s  PART_PLACED    pieza depositada
+   10.0 s  CYCLE_END      reinicio
+  Colocacion (origen = centro de la cinta):
+    cinta   ( 0.00 · 0 ·  0.00)   giro Y   0
+    brazo   ( 0.78 · 0 · -0.72)   giro Y +90
+    cobot   (-0.95 · 0 ·  0.50)   giro Y -90
+
+COMO SE MUEVEN (los tres)
+  Un solo angulo por articulacion, escrito en el nodo con nombre. Los hijos
+  siguen al padre por jerarquia. Las mallas NO se tocan nunca.
+     MAL:  forearmMesh.position.set(x, y, z)
+     BIEN: getObjectByName('J3_elbow').rotation.z = 90 * Math.PI/180
+  Y siempre la llamada por frame: mixer.update(delta) / cell.update(delta).
+  Sin ella nada se mueve, aunque el clip este "reproduciendose".
+
+Unidades: metros. Y arriba, mano derecha (glTF). Todo apoya en y = 0.
+Unity: escala de importacion 1. Unreal: escala 100 (centimetros).
+El OBJ es solo estatico: no soporta jerarquia ni animacion.

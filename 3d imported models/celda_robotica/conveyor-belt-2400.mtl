@@ -1,0 +1,36 @@
+# Exported by three-d-stage
+newmtl frame_alu
+Kd 0.6445 0.6654 0.6867
+Ks 0.2000 0.2000 0.2000
+Ns 136
+d 1.0000
+
+newmtl frame_alu_dark
+Kd 0.3968 0.4179 0.4397
+Ks 0.2000 0.2000 0.2000
+Ns 124
+d 1.0000
+
+newmtl bolt_steel
+Kd 0.2747 0.2918 0.3095
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.0000
+
+newmtl belt_surface
+Kd 1.0000 1.0000 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 30
+d 1.0000
+
+newmtl belt_rubber
+Kd 0.0437 0.0467 0.0513
+Ks 0.2000 0.2000 0.2000
+Ns 36
+d 1.0000
+
+newmtl part_carton
+Kd 0.5776 0.3515 0.1441
+Ks 0.2000 0.2000 0.2000
+Ns 56
+d 1.0000

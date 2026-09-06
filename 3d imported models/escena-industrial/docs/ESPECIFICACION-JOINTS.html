@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Especificación de joints · escena industrial</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../_shared/doc-style.css">
+<style>
+  .doc table.spec td:nth-child(2), .doc table.spec td:nth-child(3) { font-family: 'IBM Plex Mono', monospace; font-size: 8pt; }
+  .doc .no { color: #b2261a; font-weight: 600; }
+  .doc .tree { font-family: 'IBM Plex Mono', monospace; font-size: 8pt; line-height: 1.7;
+    background: #f5f3ee; border: 1px solid #e2ded6; padding: 11px 13px; break-inside: avoid; margin-bottom: 12px; }
+  .doc h2 { scroll-margin-top: 12px; }
+</style>
+</head>
+<body>
+<doc-page margin="0.78in" class="doc">
+  <div slot="footer" class="foot">Especificación de joints · escena industrial · contrato 1.0</div>
+
+  <p class="kicker">Referencia exacta · seis objetos</p>
+  <h1>Especificación de joints</h1>
+  <p class="sub">Cada eje, su tipo, su componente única y qué mueve · con las relaciones que hay que respetar</p>
+
+  <div class="meta">
+    <span><b>Convención</b>glTF · Y arriba · mano derecha</span>
+    <span><b>Unidades</b>metros · grados en tablas, radianes en código</span>
+    <span><b>Frente de todos los modelos</b>+X</span>
+  </div>
+
+  <h2>0. La regla única</h2>
+  <p>Cada articulación tiene <b>un grado de libertad</b>: se escribe <b>una sola componente</b> de una sola propiedad, y las otras dos quedan intactas para siempre. El contrato lo garantiza por código — <code>ModelBase.setJoint()</code> escribe únicamente la componente declarada en <code>MODEL.joints</code>— así que mientras se use <code>setJoint(id, valor)</code> la descomposición del extremo por error acumulado no puede ocurrir.</p>
+  <pre>inst.setJoint('J3', 80);        // ✔ recorta a límites y escribe una componente
+node.rotation.set(0, 0, a);     // ✘ tres ejes a la vez: el error se hereda
+node.rotation.z += 0.01;        // ✘ acumular en vez de asignar: deriva
+node.position.copy(target);     // ✘ los joints rotativos no cambian de posición</pre>
+  <p>Comprobación: en un joint de eje Z, <code>rotation.x</code> y <code>rotation.y</code> valen <b>exactamente 0</b> en todo momento. El primero que no lo cumpla es el que está mal escrito.</p>
+
+  <h3>0.1 Tipos de eje del contrato</h3>
+  <table>
+    <thead><tr><th style="width:22%">Tipo</th><th>Qué escribe</th><th>Valor</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">revolute</td><td><code>rotation.[axis]</code>, recortado a límites</td><td>grados</td></tr>
+      <tr><td class="mono">continuous</td><td><code>rotation.[axis]</code>, sin límite (acumula)</td><td>grados</td></tr>
+      <tr><td class="mono">prismatic</td><td><code>position.[axis]</code> = origen + valor</td><td>metros</td></tr>
+      <tr><td class="mono">channel</td><td>No geométrico: material, textura, emisividad</td><td>0…1 o estado</td></tr>
+      <tr><td class="mono">discrete</td><td>Estados discretos por índice</td><td>entero</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="gantry">1. Pórtico robot · 5 ejes</h2>
+  <p class="mono">gantry-robot-5axis · GantryRobot5Axis · plato Ø 1,40 m · altura 2,48 m · alcance 1,35–1,90 m</p>
+  <div class="tree">GantryRobot5Axis
+└── BASE_fixed                 plato, aro, pernos (estática)
+    └── G1_column_yaw          giro de columna · Y
+        └── G2_boom_extend     extensión del brazo · X (lineal)
+            └── G3_head_lift   descenso del cabezal · Y (lineal)
+                └── G4_head_roll        giro del plato · Y
+                    ├── G5_finger_0     dedo 1 · Z
+                    ├── G5_finger_1     dedo 2 · Z
+                    ├── G5_finger_2     dedo 3 · Z
+                    └── G5_finger_3     dedo 4 · Z</div>
+  <table class="spec">
+    <thead><tr><th>Eje</th><th>Tipo · axis</th><th>Componente</th><th>Rango</th><th>Vel.</th><th>Home</th><th>Qué mueve</th></tr></thead>
+    <tbody>
+      <tr><td>G1</td><td>revolute · Y</td><td>rotation.y<br><span class="no">x, z = 0</span></td><td>−180° … 180°</td><td>45 °/s</td><td>0°</td><td>Gira la columna entera sobre el plato. Arrastra brazo, cabezal y garras.</td></tr>
+      <tr><td>G2</td><td>prismatic · X</td><td>position.x<br><span class="no">y, z fijas</span></td><td>0 … 0,55 m</td><td>0,35 m/s</td><td>0,28 m</td><td>Desliza el brazo en voladizo. Cambia el radio de trabajo sin girar la columna.</td></tr>
+      <tr><td>G3</td><td>prismatic · Y</td><td>position.y<br><span class="no">x, z fijas</span></td><td>−0,62 … 0 m</td><td>0,45 m/s</td><td>0 m</td><td>Baja y sube el cabezal. <b>Negativo desciende.</b></td></tr>
+      <tr><td>G4</td><td>revolute · Y</td><td>rotation.y<br><span class="no">x, z = 0</span></td><td>−180° … 180°</td><td>120 °/s</td><td>0°</td><td>Gira el plato de garras para orientar la caja. No cambia su posición.</td></tr>
+      <tr><td>G5</td><td>revolute · Z ×4</td><td>rotation.z<br><span class="no">x, y = 0</span></td><td>−8° … 24°</td><td>90 °/s</td><td>24°</td><td>Abre y cierra los cuatro dedos. <b>Un valor gobierna los cuatro nodos.</b> +24° abierta · −8° cerrada.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <b>La garra radial.</b> Cada dedo está en un grupo girado θ = 45°, 135°, 225°, 315° sobre Y, con su
+    X local apuntando hacia fuera. Por eso los cuatro cierran hacia el centro con el <b>mismo</b>
+    <code>rotation.z</code>: la orientación del grupo hace el trabajo. Escribir valores distintos en
+    cada dedo desalinea la garra.
+  </div>
+  <p>Clips: <code>Ciclo_Descarga</code> 12,0 s (bucle · cierre en t = 3,6 s, apertura en t = 9,0 s) · <code>Ir_A_Reposo</code> 2,5 s · <code>Demo_Ejes</code> 17,0 s.</p>
+  <p><b>Orden de movimiento:</b> G1 (orientar) → G2 (radio) → G3 (descenso) → G4 (orientación de caja) → G5 (garra, con el pórtico detenido). Nunca cerrar la garra mientras G3 se mueve.</p>
+
+  <h2 id="machine">2. Máquina de inspección</h2>
+  <p class="mono">inspection-machine · InspectionMachine · 1,30 × 1,55 × 2,52 m · túnel 0,78 × 0,62 m, de y = 0,79 a 1,41</p>
+  <table class="spec">
+    <thead><tr><th>Eje</th><th>Tipo · axis</th><th>Componente</th><th>Rango</th><th>Home</th><th>Qué mueve</th></tr></thead>
+    <tbody>
+      <tr><td>M1</td><td>channel</td><td>emissiveIntensity</td><td>0 · 1 · 2</td><td>1</td><td>Baliza de dos luces. 0 apagada · 1 verde (en marcha) · 2 roja (alarma). No es geometría: cambia la emisividad de dos materiales.</td></tr>
+      <tr><td>M2</td><td>channel</td><td>emissiveIntensity ×3</td><td>0 … 1</td><td>0</td><td>Fase del barrido de las tres luces rojas. La máquina reparte la fase entre las tres lámparas.</td></tr>
+      <tr><td>M3</td><td>revolute · Y</td><td>rotation.y<br><span class="no">x, z = 0</span></td><td>0° … 95°</td><td>0°</td><td>Puerta inferior. Bisagra vertical en el borde −X de la cara +Z.</td></tr>
+      <tr><td>M4</td><td>continuous · Y</td><td>rotation.y</td><td>sin límite</td><td>0°</td><td>Rotor del ventilador tras la rejilla. Acumula: <code>rotation.y −= (rpm/60)·2π·dt</code>, 420 rpm nominales.</td></tr>
+      <tr><td>M5</td><td>channel</td><td>textura de canvas</td><td>0 … 1</td><td>1</td><td>Contenido de la pantalla del panel. 0 apagada · 1 lectura activa. Se redibuja 1 de cada 4 frames.</td></tr>
+      <tr><td>M6</td><td>revolute · Z ×2</td><td>rotation.z<br><span class="no">x, y = 0</span></td><td>0° … 62°</td><td>0°</td><td>Lamas de las cortinas del túnel. Un valor gobierna entrada y salida, con signo opuesto por lado. Vuelven solas por amortiguación tras <code>signal('BOX_ENTERING')</code>.</td></tr>
+    </tbody>
+  </table>
+  <p>Clips: <code>Ciclo_Inspeccion</code> 6,0 s (bucle) · <code>Mantenimiento</code> 3,0 s (una vez).
+  Señales que entiende: <code>RUN</code> · <code>STOP</code> · <code>ALARM</code> · <code>BOX_ENTERING</code> · <code>OPEN_DOOR</code> · <code>CLOSE_DOOR</code>.</p>
+  <p>Marcos: <code>TUNNEL_IN</code> (−0,65 · 0,85 · 0) · <code>TUNNEL_OUT</code> (0,65 · 0,85 · 0) · <code>PANEL</code> (0,30 · 1,10 · 0,775).</p>
+
+  <h2 id="conveyor">3. Tramo de cinta</h2>
+  <p class="mono">conveyor-segment · ConveyorSegment_A / _B · banda a 0,85 m · ancho útil 0,62 m · tambor r = 0,075 m · paso de banda 0,14 m</p>
+  <p>Es el único modelo cuyo movimiento <b>acumula</b>: los tambores giran indefinidamente y la banda se desplaza sin volver a una pose. Por eso usa <code>−=</code> y no asignación, y por eso no tiene clips: su movimiento es paramétrico, gobernado por el canal de velocidad.</p>
+  <table class="spec">
+    <thead><tr><th>Eje</th><th>Tipo · axis</th><th>Componente</th><th>Relación</th><th>Home</th><th>Qué mueve</th></tr></thead>
+    <tbody>
+      <tr><td>C1</td><td>channel</td><td>velocidad</td><td>—</td><td>0,30 m/s</td><td>Canal maestro. De él derivan los otros tres movimientos. Máximo 0,80 m/s.</td></tr>
+      <tr><td>R1</td><td>continuous · <b>Z</b></td><td>rotation.z<br><span class="no">x, y = 0</span></td><td>−= d / 0,075</td><td>0°</td><td>Tambor motriz. Es un cilindro <b>tumbado sobre Z</b>: gira sobre Z, no sobre X. Girarlo en X lo hace rodar de canto.</td></tr>
+      <tr><td>R2</td><td>continuous · <b>Z</b></td><td>rotation.z<br><span class="no">x, y = 0</span></td><td>−= d / 0,075</td><td>0°</td><td>Tambor de retorno. Misma velocidad angular: rodadura sin deslizamiento.</td></tr>
+      <tr><td>S1</td><td>prismatic · Y</td><td>position.y<br><span class="no">x, z fijas</span></td><td>recorrido 0,11 m</td><td>−0,11 m</td><td>Tope de retención. 0 = subido (retiene) · −0,11 = bajado (libera). Dos posiciones, 0,25 s de actuación.</td></tr>
+      <tr><td>—</td><td>textura</td><td>map.offset.x</td><td>−= d / 0,14</td><td>0</td><td>Superficie de la banda. No se mueve geometría: se desplaza la textura.</td></tr>
+    </tbody>
+  </table>
+  <pre>const d = velocidad * dt;                  // metros recorridos este frame
+tex.offset.x   -= d / 0.14;                // banda
+R1.rotation.z  -= d / 0.075;               // tambores: eje Z
+R2.rotation.z  -= d / 0.075;
+for (const caja of cargo) caja.position.x += d;</pre>
+  <p>Marcos: <code>INFEED_FRAME</code> · <code>STATION_FRAME</code> (coincide con S1) · <code>OUTFEED_FRAME</code>. Señales: <code>RUN</code> · <code>STOP</code> · <code>STOPPER_UP</code> · <code>STOPPER_DOWN</code>. Emite <code>BOX_AT_STATION</code> y <code>BOX_RECYCLED</code>.</p>
+  <p><b>Carga:</b> <code>conv.addCargo(objeto3D)</code> registra una caja para que la cinta la haga avanzar. La caja debe ser hija de la cinta y su X es local al tramo.</p>
+
+  <h2 id="operator">4. Operario · 9 ejes</h2>
+  <p class="mono">operator · Operator · altura 1,76 m · frente +X · piernas y pies fijos</p>
+  <div class="tree">Operator
+├── LEGS_fixed                    muslos, pantorrillas, zapatos (estática)
+└── O1_hips_yaw                   caderas · Y
+    └── O2_spine_pitch            inclinación de torso · Z
+        └── O3_spine_twist        torsión de torso · Y
+            ├── O4_head_yaw       cabeza, giro · Y
+            │   └── O5_head_pitch cabeza, cabeceo · Z
+            ├── O6_shoulder_R     hombro derecho · Z
+            │   └── O7_elbow_R    codo derecho · Z
+            └── O8_shoulder_L     hombro izquierdo · Z
+                └── O9_elbow_L    codo izquierdo · Z</div>
+  <table class="spec">
+    <thead><tr><th>Eje</th><th>Tipo · axis</th><th>Rango</th><th>Vel.</th><th>Home</th><th>Qué mueve</th></tr></thead>
+    <tbody>
+      <tr><td>O1</td><td>revolute · Y</td><td>−60° … 60°</td><td>90 °/s</td><td>0°</td><td>Gira el cuerpo entero desde las caderas. Arrastra torso, brazos y cabeza.</td></tr>
+      <tr><td>O2</td><td>revolute · Z</td><td>−12° … 28°</td><td>60 °/s</td><td>4°</td><td>Inclina el torso. Positivo se agacha hacia delante (+X).</td></tr>
+      <tr><td>O3</td><td>revolute · Y</td><td>−40° … 40°</td><td>80 °/s</td><td>0°</td><td>Torsión del torso sobre las caderas, independiente de O1.</td></tr>
+      <tr><td>O4</td><td>revolute · Y</td><td>−75° … 75°</td><td>140 °/s</td><td>0°</td><td>Gira la cabeza. No mueve nada más.</td></tr>
+      <tr><td>O5</td><td>revolute · Z</td><td>−25° … 35°</td><td>120 °/s</td><td>8°</td><td>Cabeceo de la cabeza. Positivo mira hacia abajo, al panel.</td></tr>
+      <tr><td>O6</td><td>revolute · Z</td><td>−100° … 100°</td><td>180 °/s</td><td>30°</td><td>Hombro derecho. <b>Positivo adelanta el brazo hacia +X</b>, el frente del modelo.</td></tr>
+      <tr><td>O7</td><td>revolute · Z</td><td>0° … 130°</td><td>220 °/s</td><td>78°</td><td>Codo derecho. Es el eje que produce el gesto de pulsar: oscila ±8° sobre su reposo.</td></tr>
+      <tr><td>O8</td><td>revolute · Z</td><td>−100° … 100°</td><td>180 °/s</td><td>8°</td><td>Hombro izquierdo, en reposo junto al cuerpo.</td></tr>
+      <tr><td>O9</td><td>revolute · Z</td><td>0° … 130°</td><td>220 °/s</td><td>18°</td><td>Codo izquierdo.</td></tr>
+    </tbody>
+  </table>
+  <p>Con la pose Home, la mano derecha queda a <b>0,44 m por delante del hombro</b>, a y = 1,27 m: la altura del panel de la máquina. Clips: <code>Operar_Panel</code> 5,0 s · <code>Mirar_Cinta</code> 4,0 s · <code>Reposo</code> 6,0 s · <code>Demo_Ejes</code> 14,0 s.</p>
+  <div class="note">
+    <b>Es una cadena de sólidos, no un personaje con esqueleto.</b> No hay <i>skinning</i> ni pesos:
+    se mueve exactamente igual que las máquinas, con <code>setJoint</code>. Eso lo hace predecible y
+    barato, a cambio de no deformar la ropa.
+  </div>
+
+  <h2 id="box">5. Caja de cartón y pila</h2>
+  <p class="mono">cargo-box · CargoBox · 0,42 × 0,34 × 0,36 m · origen en el centro de su base (y = 0)</p>
+  <table class="spec">
+    <thead><tr><th>Eje</th><th>Tipo · axis</th><th>Componente</th><th>Rango</th><th>Home</th><th>Qué mueve</th></tr></thead>
+    <tbody>
+      <tr><td>L1</td><td>revolute · Z</td><td>rotation.z<br><span class="no">x, y = 0</span></td><td>0° … 105°</td><td>0°</td><td>Tapa superior. Bisagra en el borde −X. 0° cerrada · 105° abierta.</td></tr>
+    </tbody>
+  </table>
+  <p>El origen en la base es deliberado: para apoyar una caja sobre la banda basta <code>position.y = 0.85</code>, sin restar medias alturas. Ancho de agarre 0,42 m.</p>
+  <p class="mono" style="margin-top:14px">cargo-box-stack · CargoBoxStack · sin ejes · configurable</p>
+  <p>Se construye con <code>createStack(THREE, { rows, cols, depth, jitter })</code>. La hilera superior lleva una caja menos, como en la referencia, y cada caja recibe un desalineado determinista de ±2 cm para que la pila no parezca generada. Señales: <code>TAKE_BOX</code> (devuelve y retira la caja superior) y <code>ADD_BOX</code>.</p>
+
+  <h2>6. Relaciones que hay que respetar</h2>
+  <table>
+    <thead><tr><th style="width:30%">Relación</th><th>Por qué</th></tr></thead>
+    <tbody>
+      <tr><td><b>Un solo reloj</b> para toda la escena</td><td>Todos los objetos avanzan con el mismo <code>delta</code>. Relojes independientes hacen derivar las señales y las cajas se traspasan en el aire.</td></tr>
+      <tr><td><b>La garra actúa con el pórtico detenido</b></td><td>Cerrar G5 mientras G3 desciende es el error que más delata una animación falsa.</td></tr>
+      <tr><td><b>El tope sube antes de que llegue la caja</b></td><td>Al menos 0,3 s de margen. Subirlo a la vez produce atravesamientos según el framerate.</td></tr>
+      <tr><td><b>Los cuatro dedos, un solo valor</b></td><td>G5 replica su ángulo en los cuatro nodos. Escribirlos por separado desalinea la garra.</td></tr>
+      <tr><td><b>Traspaso con <code>attach()</code>, no <code>add()</code></b></td><td><code>attach()</code> conserva la transformación mundial; <code>add()</code> produce el salto característico de un traspaso mal hecho.</td></tr>
+      <tr><td><b>Los ejes se asignan, no se acumulan</b></td><td>Salvo los tambores de la cinta y el ventilador, que son de tipo <code>continuous</code> por diseño.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Verificación</h2>
+  <ul>
+    <li><code>inst.diagnose()</code> devuelve <code>true</code> en todos los ejes y lista los clips con sus duraciones.</li>
+    <li>En cada joint, las dos componentes no usadas valen exactamente 0 durante todo el movimiento.</li>
+    <li>La <code>position</code> de ningún joint rotativo cambia nunca.</li>
+    <li><code>Demo_Ejes</code> se reproduce completo en pórtico y operario sin que el extremo se descomponga.</li>
+    <li>Todos los objetos apoyan en y = 0: pórtico 2,48 m · máquina 2,52 m · cinta 0,91 m · operario 1,76 m.</li>
+    <li>Con la velocidad al 25 % el movimiento sigue siendo suave: confirma interpolación por tiempo, no por frame.</li>
+  </ul>
+</doc-page>
+<script src="../_shared/doc-page.js"></script>
+</body>
+</html>

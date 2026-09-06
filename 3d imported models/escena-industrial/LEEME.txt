@@ -1,0 +1,139 @@
+ESCENA INDUSTRIAL - SEIS OBJETOS 3D INDEPENDIENTES - v1.0
+=========================================================
+
+Seis modelos separados, cada uno con su rig completo, su visor y su
+exportador GLB. Ninguno depende de los otros. Todos cumplen el MISMO
+contrato, y por eso se pueden quitar, reponer y sustituir en vivo.
+
+
+EMPIEZA AQUI
+------------
+  1) 06-escena-completa/scene.html
+     Los seis objetos juntos, ciclo maestro de 12 s y editor lateral que
+     quita, repone y sustituye objetos SIN RECARGAR. Abrelo primero: es la
+     demostracion de que la escena es flexible.
+
+  2) docs/GUIA-INTEGRACION.html
+     Como integrarlos en tu plataforma: el contrato, el registro por
+     ranuras, colocacion, ciclo maestro, traspaso de piezas, diagnostico
+     de fallos y como anadir un objeto nuevo.
+
+  3) docs/ESPECIFICACION-JOINTS.html
+     Cada eje de cada modelo: tipo, componente unica, rango, velocidad y
+     que arrastra. Es la referencia para mover el rig sin descomponerlo.
+
+
+EL CONTRATO COMUN  (_shared/model-api.js)
+-----------------------------------------
+Cada modelo exporta:   MODEL  +  create(THREE, opts)
+Cada instancia expone: root · model · setJoint(id,v) · getJoint(id)
+                       setPose(obj) · playClip(name,{loop}) · stopClip()
+                       update(dt) · signal(name,payload) · diagnose()
+                       dispose()
+
+ERROR NUMERO 1: sin inst.update(dt) en el bucle de render NADA se mueve,
+aunque el clip este "reproduciendose".
+
+REGLA DE ORO: cada articulacion tiene UN grado de libertad. setJoint()
+escribe UNA sola componente y recorta a limites. Nunca rotation.set(),
+nunca +=, nunca escribir position en un joint rotativo.
+
+
+LOS SEIS OBJETOS
+----------------
+01-portico-robot/        gantry-robot-5axis      5 ejes + garra de 4 dedos
+   G1_column_yaw     revolute  Y   -180 .. +180    45 deg/s   giro de columna
+   G2_boom_extend    prismatic X    0.00 .. 0.55   0.35 m/s   extension del brazo
+   G3_head_lift      prismatic Y   -0.62 .. 0.00   0.45 m/s   descenso del cabezal
+   G4_head_roll      revolute  Y   -180 .. +180   120 deg/s   giro del plato
+   G5_grip           revolute  Z      -8 .. +24    90 deg/s   4 dedos, UN valor
+   Clips: Ciclo_Descarga 12.0s · Ir_A_Reposo 2.5s · Demo_Ejes 17.0s
+
+02-maquina-inspeccion/   inspection-machine      6 movimientos
+   M1_beacon         channel        0 | 1 | 2                 baliza roja/verde
+   M2_strip_lights   channel        0 .. 1                    3 luces en secuencia
+   M3_door_hinge     revolute  Y      0 .. +95    60 deg/s    puerta inferior
+   M4_fan            continuous Y   sin limite   420 rpm      ventilador
+   M5_screen         channel        0 .. 1                    pantalla del panel
+   M6_curtain        revolute  Z      0 .. +62   180 deg/s    cortinas del tunel
+   Clips: Ciclo_Inspeccion 6.0s · Mantenimiento 3.0s
+   Tunel 0.78 x 0.62 m, de y=0.79 a y=1.41
+
+03-cinta-transportadora/ conveyor-segment        2 instancias: A y B
+   C1  velocidad     channel      0.00 .. 0.80 m/s   canal maestro
+   R1_drive_roller   continuous Z  rotation.z -= d / 0.075
+   R2_idler_roller   continuous Z  rotation.z -= d / 0.075
+   S1_stopper        prismatic  Y  -0.11 .. 0.00 m   tope de retencion
+   banda: map.offset.x -= d / 0.14      con d = velocidad * dt
+   Sin clips: movimiento PARAMETRICO. Banda a 0.85 m, ancho util 0.62 m.
+   OJO: los tambores son cilindros tumbados sobre Z. Giran en Z, no en X.
+
+04-operario/             operator                9 ejes · 1.76 m · frente +X
+   O1_hips_yaw       revolute Y   -60 ..  +60    caderas
+   O2_spine_pitch    revolute Z   -12 ..  +28    inclinacion de torso
+   O3_spine_twist    revolute Y   -40 ..  +40    torsion de torso
+   O4_head_yaw       revolute Y   -75 ..  +75    cabeza, giro
+   O5_head_pitch     revolute Z   -25 ..  +35    cabeza, cabeceo
+   O6_shoulder_R     revolute Z  -100 .. +100    hombro derecho (+ = adelante)
+   O7_elbow_R        revolute Z     0 .. +130    codo derecho (gesto de pulsar)
+   O8_shoulder_L     revolute Z  -100 .. +100    hombro izquierdo
+   O9_elbow_L        revolute Z     0 .. +130    codo izquierdo
+   Clips: Operar_Panel 5.0s · Mirar_Cinta 4.0s · Reposo 6.0s · Demo_Ejes 14.0s
+
+05-caja-y-pila/          cargo-box  +  cargo-box-stack
+   L1_lid_hinge      revolute Z     0 .. +105    tapa de la caja
+   Caja 0.42 x 0.34 x 0.36 m, origen en el CENTRO DE SU BASE (y=0).
+   Pila configurable: createStack(THREE, { rows, cols, depth, jitter })
+
+06-escena-completa/      los seis juntos + editor de sustitucion en vivo
+
+
+COLOCACION  (origen = centro de la maquina, flujo en +X)
+--------------------------------------------------------
+   machine     ( 0.00 · 0 ·  0.00)   giro Y  0
+   conveyorA   (-2.30 · 0 ·  0.00)   giro Y  0
+   conveyorB   ( 2.40 · 0 ·  0.00)   giro Y  0
+   gantry      (-4.35 · 0 · -1.15)   giro Y -0.785 rad
+   operator    ( 0.30 · 0 ·  1.22)   giro Y +PI/2
+   boxStack    ( 4.55 · 0 ·  1.55)   giro Y  0.18 rad
+
+
+CICLO MAESTRO DE 12 s
+---------------------
+    0.0 s  GANTRY_PICK     el portico toma una caja
+    4.8 s  BOX_ON_BELT     la caja pasa a la cinta A
+    4.8 s  BELT_A_RUN      cinta A a 0.30 m/s
+    6.4 s  BOX_ENTERING    la caja abre la cortina del tunel
+    7.0 s  OPERATOR_ACK    el operario valida en el panel
+    8.6 s  BELT_B_RUN      la caja sale a la cinta B
+    9.4 s  INSPECTION_OK   baliza en verde
+   12.0 s  CYCLE_END       reinicio
+
+Un solo reloj (delta) para todos los objetos. Traspaso de piezas SIEMPRE
+con attach(), nunca con add(): attach conserva la transformacion mundial.
+
+
+QUITAR, PONER Y SUSTITUIR
+-------------------------
+La flexibilidad esta en el registro por ranuras, no en los modelos:
+   mount(slot, cfg)     importa el modulo, coloca y registra
+   unmount(slot)        dispose() + borrar la entrada
+   replace(slot, cfg)   quitar y montar otro modulo en la misma ranura
+Codigo completo en docs/GUIA-INTEGRACION.html, seccion 4, y funcionando
+en 06-escena-completa/scene-boot.js.
+
+
+EXPORTAR
+--------
+Cada visor lleva "Download GLB": jerarquia con nombre, materiales PBR,
+clips de animacion y metadatos del modelo en userData (extras del glTF).
+El OBJ es solo estatico: no soporta jerarquia ni animacion.
+Los ejes de tipo channel (luces, pantalla, textura de banda) NO viajan en
+el GLB: reimplementarlos con la tabla de la especificacion.
+
+Unidades: metros. Y arriba, mano derecha (glTF). Todo apoya en y = 0.
+Variante escalada: inst.root.scale.setScalar(100) da centimetros para
+Unreal. Los valores de setJoint siguen siendo grados y metros.
+Unity: escala de importacion 1.
+
+Los visores necesitan conexion a internet: three.js se carga desde CDN.

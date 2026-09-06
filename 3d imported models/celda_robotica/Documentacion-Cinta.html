@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cinta transportadora industrial · documentación del rig</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./doc-style.css">
+</head>
+<body>
+<doc-page margin="0.85in" class="doc">
+  <div slot="footer" class="foot">Cinta transportadora 2400 mm · rig 1.0 · celda robótica</div>
+
+  <p class="kicker">Activo 3 de 3 · independiente</p>
+  <h1>Cinta transportadora industrial</h1>
+  <p class="sub">Rig, movimiento de banda y estaciones · objeto autónomo, preparado para compartir escenario</p>
+
+  <div class="meta">
+    <span><b>Nodo raíz</b>ConveyorBelt2400</span>
+    <span><b>Longitud</b>2,40 m</span>
+    <span><b>Ancho útil</b>0,50 m</span>
+    <span><b>Altura de trabajo</b>0,80 m</span>
+    <span><b>Velocidad nominal</b>0,25 m/s</span>
+  </div>
+
+  <div class="note" style="margin-top:0"><b>Si el extremo del brazo se descompone durante el movimiento</b>, la referencia exacta de qué eje mueve cada joint y cómo se coordinan entre sí está en <a href="./ESPECIFICACION-EJES.html">Especificación de ejes</a>.</div>
+
+  <h2>1. Qué es este activo</h2>
+  <p>Cinta de banda plana sobre bastidor de perfil de aluminio: dos tambores (motriz y de retorno), banda de caucho, perfiles guía laterales, tres pares de patas con pie regulable y un tope neumático que retiene la pieza en la estación de recogida. Incluye cuatro cajas de relleno para visualizar el transporte, agrupadas aparte para poder ocultarlas.</p>
+  <p>El movimiento no es una animación por keyframes como en los brazos: es <b>movimiento continuo paramétrico</b>. Se define por una velocidad en m/s, y de ella se derivan el desplazamiento de la banda, el giro de los tambores y el avance de las piezas. Por eso el archivo no lleva clips: lleva un contrato de movimiento que la plataforma implementa en tres líneas.</p>
+
+  <h2>2. Convenciones</h2>
+  <table>
+    <tbody>
+      <tr><td style="width:32%"><b>Unidades</b></td><td>metros (1 unidad = 1 m)</td></tr>
+      <tr><td><b>Orientación</b></td><td>Y arriba, mano derecha (convención glTF)</td></tr>
+      <tr><td><b>Origen</b></td><td>centro geométrico de la cinta, a nivel del suelo (y = 0)</td></tr>
+      <tr><td><b>Eje de transporte</b></td><td>+X (de la entrada, −X, hacia la salida, +X)</td></tr>
+      <tr><td><b>Superficie de la banda</b></td><td>y = 0,80 m</td></tr>
+      <tr><td><b>Radio de tambor</b></td><td>0,055 m · eje de giro Z (perpendicular al transporte)</td></tr>
+      <tr><td><b>Velocidad</b></td><td>nominal 0,25 m/s · máxima 0,60 m/s</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Jerarquía de nodos</h2>
+  <div class="tree">ConveyorBelt2400
+├── FRAME_fixed          bastidor, patas, perfiles, cabezales (estática)
+├── BELT_surface         banda: material con textura desplazable
+├── R1_drive_roller      tambor motriz · giro continuo en X
+├── R2_idler_roller      tambor de retorno · giro continuo en X
+├── S1_stopper           tope neumático · traslación en Y
+├── PICK_STATION         marco de referencia (sin geometría)
+├── INFEED_STATION       marco de referencia (sin geometría)
+└── PARTS_optional       cajas de relleno, ocultables
+    ├── P1_part … P4_part</div>
+
+  <h2>4. Tabla de movimientos</h2>
+  <table>
+    <thead><tr><th>Id</th><th class="mono">Nodo</th><th>Tipo</th><th>Qué se escribe</th><th>Relación</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>C1</td><td class="mono">BELT_surface</td><td>desplazamiento de textura</td>
+        <td class="mono">material.map.offset.x</td>
+        <td class="mono">offset.x −= d / 0,12</td>
+      </tr>
+      <tr>
+        <td>R1</td><td class="mono">R1_drive_roller</td><td>rotación continua Z</td>
+        <td class="mono">rotation.z</td>
+        <td class="mono">rotation.z −= d / 0,055</td>
+      </tr>
+      <tr>
+        <td>R2</td><td class="mono">R2_idler_roller</td><td>rotación continua Z</td>
+        <td class="mono">rotation.z</td>
+        <td>igual que R1 (rodadura sin deslizamiento)</td>
+      </tr>
+      <tr>
+        <td>S1</td><td class="mono">S1_stopper</td><td>lineal Y</td>
+        <td class="mono">position.y</td>
+        <td>subido 0,80 · bajado 0,71 · recorrido 0,09 m en 0,25 s</td>
+      </tr>
+      <tr>
+        <td>Pn</td><td class="mono">P1…P4_part</td><td>lineal X</td>
+        <td class="mono">position.x</td>
+        <td class="mono">x += d</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>Donde <code>d = velocidad · dt</code> es la distancia recorrida por la banda en el frame. El paso de nervadura de la banda es 0,12 m, de ahí el divisor del desplazamiento de textura. Todos estos valores viajan dentro del GLB, en <code>userData</code>, con el esquema <code>conveyor-rig/1.0</code>.</p>
+
+  <h2>5. Implementación del movimiento</h2>
+  <pre>const conveyor = gltf.scene;                       // ConveyorBelt2400
+const belt = conveyor.getObjectByName('belt_top').material.map;
+const R1 = conveyor.getObjectByName('R1_drive_roller');
+const R2 = conveyor.getObjectByName('R2_idler_roller');
+const parts = [1,2,3,4].map(i => conveyor.getObjectByName(`P${i}_part`));
+
+let speed = 0.25;            // m/s
+let stopperUp = false;
+const PICK_X = 0.78;         // posición X de PICK_STATION
+
+function update(dt) {
+  const d = speed * dt;
+  belt.offset.x -= d / 0.12;                       // banda
+  R1.rotation.z -= d / 0.055;                      // tambores: eje de giro Z
+  R2.rotation.z -= d / 0.055;
+
+  for (const p of parts) {                         // piezas
+    let x = p.position.x + d;
+    if (stopperUp &amp;&amp; p.position.x &lt;= PICK_X &amp;&amp; x &gt; PICK_X) x = PICK_X;
+    if (x &gt; 1.4) x = -1.4;                         // reentrada cíclica
+    p.position.x = x;
+  }
+}
+
+function setStopper(up) {                          // tope neumático
+  conveyor.getObjectByName('S1_stopper').position.y = up ? 0.80 : 0.71;
+  stopperUp = up;
+}</pre>
+  <div class="note">
+    <b>Piezas propias.</b> <code>PARTS_optional</code> es geometría de relleno para ver el
+    transporte. En producción conviene ocultarla (<code>visible = false</code>) y hacer avanzar
+    las piezas reales de la escena con la misma fórmula <code>x += velocidad · dt</code>.
+  </div>
+
+  <h2>6. Modos de funcionamiento</h2>
+  <table>
+    <thead><tr><th>Modo</th><th>Velocidad</th><th>Tope S1</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td><b>Marcha continua</b></td><td>0,25 m/s</td><td>bajado</td><td>Flujo libre. Las piezas atraviesan la cinta sin detenerse.</td></tr>
+      <tr><td><b>Marcha indexada</b></td><td>0,25 m/s</td><td>ciclo 2,5 s arriba / 1,5 s abajo</td><td>Modo de trabajo con robot: retiene la pieza en la estación mientras el brazo la recoge, y libera la siguiente.</td></tr>
+      <tr><td><b>Parada</b></td><td>0 m/s</td><td>indiferente</td><td>Paro de celda. La banda y los tambores quedan quietos; el desplazamiento de textura se detiene solo, sin código extra.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Estaciones</h2>
+  <table>
+    <thead><tr><th class="mono">Marco</th><th>Posición local (x · y · z)</th><th>Para qué sirve</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">INFEED_STATION</td><td class="mono">−0,95 · 0,808 · 0</td><td>Entrada. Punto donde el cobot o un operario deposita las piezas sobre la banda.</td></tr>
+      <tr><td class="mono">PICK_STATION</td><td class="mono">0,78 · 0,808 · 0</td><td>Recogida. Coincide con el tope S1: la pieza se detiene exactamente aquí y el brazo industrial la toma.</td></tr>
+    </tbody>
+  </table>
+  <p>Son nodos vacíos: no tienen geometría y sirven como marcos de referencia. Para colocar los robots, basta leer la posición mundial de estos nodos y situar sus bases a la distancia de alcance adecuada.</p>
+
+  <h2>8. Papel en el escenario conjunto</h2>
+  <p>La cinta es el <b>eje del flujo</b>: entra material por <code>INFEED_STATION</code> y sale por <code>PICK_STATION</code>. Su tope es el mecanismo de sincronización con los brazos: mientras está subido, la pieza está inmóvil y el agarre es determinista. El protocolo de señales entre los tres activos está en <a href="./Documentacion-Escenario-Conjunto.html">Documentación del escenario conjunto</a>.</p>
+
+  <h2>9. Verificación tras importar</h2>
+  <ul>
+    <li>Existen los nodos <code>BELT_surface</code>, <code>R1_drive_roller</code>, <code>R2_idler_roller</code>, <code>S1_stopper</code>, <code>PICK_STATION</code>, <code>INFEED_STATION</code>.</li>
+    <li>La banda tiene un material con textura (<code>belt_surface</code>) y esa textura está en modo repetición: sin ello el desplazamiento no se ve.</li>
+    <li>Al aplicar la fórmula de la sección 5, la banda y los tambores giran en el mismo sentido y a la misma velocidad lineal.</li>
+    <li>Con el tope subido, las piezas se detienen en x = 0,78 y no lo atraviesan.</li>
+    <li>La superficie de la banda queda a 0,80 m y las patas apoyan en y = 0.</li>
+    <li>Cinco materiales PBR con nombre: <code>frame_alu</code>, <code>frame_alu_dark</code>, <code>belt_surface</code>, <code>bolt_steel</code>, <code>part_carton</code>.</li>
+  </ul>
+</doc-page>
+<script src="./doc-page.js"></script>
+</body>
+</html>

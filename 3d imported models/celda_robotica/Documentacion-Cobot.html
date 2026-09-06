@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cobot colaborativo 6 ejes · documentación del rig</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./doc-style.css">
+</head>
+<body>
+<doc-page margin="0.85in" class="doc">
+  <div slot="footer" class="foot">Cobot colaborativo 6 ejes · rig 1.1 · celda robótica</div>
+
+  <p class="kicker">Activo 1 de 3 · independiente</p>
+  <h1>Cobot colaborativo de 6 ejes</h1>
+  <p class="sub">Rig, articulaciones y animaciones · objeto autónomo, preparado para compartir escenario</p>
+
+  <div class="meta">
+    <span><b>Nodo raíz</b>CollaborativeArm6DOF</span>
+    <span><b>Ejes</b>6 rotativos</span>
+    <span><b>Alcance</b>≈ 0,92 m</span>
+    <span><b>Carga</b>5 kg</span>
+    <span><b>Herramienta</b>brida ISO 9409-1-50-4-M6</span>
+  </div>
+
+  <div class="note" style="margin-top:0"><b>Si el extremo del brazo se descompone durante el movimiento</b>, la referencia exacta de qué eje mueve cada joint y cómo se coordinan entre sí está en <a href="./ESPECIFICACION-EJES.html">Especificación de ejes</a>.</div>
+
+  <h2>1. Qué es este activo</h2>
+  <p>Cobot de brazo articulado con seis ejes rotativos en configuración colaborativa: tres ejes de posición (base, hombro, codo) y una muñeca de tres ejes que orienta libremente la herramienta. No lleva pinza: termina en una brida normalizada, de modo que la escena puede montar el efector que necesite (pinza, ventosa, atornillador, cámara).</p>
+  <p>Es un archivo independiente. No depende del brazo industrial ni de la cinta, y puede exportarse, importarse y animarse por separado. La sección 7 describe cómo se coordina con los otros dos activos cuando comparten escenario.</p>
+
+  <h2>2. Convenciones</h2>
+  <table>
+    <tbody>
+      <tr><td style="width:30%"><b>Unidades</b></td><td>metros (1 unidad = 1 m)</td></tr>
+      <tr><td><b>Orientación</b></td><td>Y arriba, mano derecha (convención glTF)</td></tr>
+      <tr><td><b>Origen</b></td><td>centro del disco de base, apoyado en y = 0</td></tr>
+      <tr><td><b>Altura en Home</b></td><td>≈ 0,62 m · altura totalmente extendido ≈ 0,98 m</td></tr>
+      <tr><td><b>Ángulos</b></td><td>grados en este documento; cuaterniones en el archivo</td></tr>
+      <tr><td><b>Punto de herramienta</b></td><td>nodo <code>TOOL_FLANGE</code>, cara exterior de la brida</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Jerarquía de nodos</h2>
+  <div class="tree">CollaborativeArm6DOF
+└── BASE_fixed                  disco, pedestal y pernos (estática)
+    └── J1_base_rotate          rotación de base · eje Y
+        └── J2_shoulder_lift    elevación de hombro · eje Z
+            └── J3_elbow        codo · eje Z
+                └── J4_wrist_1  muñeca 1, cabeceo · eje Z
+                    └── J5_wrist_2      muñeca 2, guiñada · eje X
+                        └── J6_wrist_3  muñeca 3, giro · eje Y
+                            └── TOOL_FLANGE   punto de montaje de herramienta</div>
+  <p>Los nombres son la interfaz del rig: no deben renombrarse al importar. Cada articulación se mueve escribiendo <b>un solo ángulo</b> en su eje local; los eslabones hijos le siguen por jerarquía. Las mallas nunca se tocan.</p>
+
+  <h2>4. Tabla de articulaciones</h2>
+  <table>
+    <thead><tr><th>Eje</th><th class="mono">Nodo</th><th>Eje local</th><th>Propiedad</th><th>Rango</th><th>Vel. máx.</th><th>Home</th></tr></thead>
+    <tbody>
+      <tr><td>J1</td><td class="mono">J1_base_rotate</td><td>Y</td><td class="mono">rotation.y</td><td>−360° … +360°</td><td>180 °/s</td><td>0°</td></tr>
+      <tr><td>J2</td><td class="mono">J2_shoulder_lift</td><td>Z</td><td class="mono">rotation.z</td><td>−175° … +175°</td><td>180 °/s</td><td>−35°</td></tr>
+      <tr><td>J3</td><td class="mono">J3_elbow</td><td>Z</td><td class="mono">rotation.z</td><td>−160° … +160°</td><td>180 °/s</td><td>+75°</td></tr>
+      <tr><td>J4</td><td class="mono">J4_wrist_1</td><td>Z</td><td class="mono">rotation.z</td><td>−175° … +175°</td><td>225 °/s</td><td>+50°</td></tr>
+      <tr><td>J5</td><td class="mono">J5_wrist_2</td><td>X</td><td class="mono">rotation.x</td><td>−175° … +175°</td><td>225 °/s</td><td>0°</td></tr>
+      <tr><td>J6</td><td class="mono">J6_wrist_3</td><td>Y</td><td class="mono">rotation.y</td><td>−360° … +360°</td><td>225 °/s</td><td>0°</td></tr>
+    </tbody>
+  </table>
+  <p>Los mismos valores viajan dentro del GLB, en <code>userData</code> del nodo raíz (campo <code>extras</code> del glTF), con el esquema <code>robot-arm-rig/1.1</code>.</p>
+
+  <h3>4.1 Longitudes de eslabón</h3>
+  <table>
+    <tbody>
+      <tr><td style="width:40%">Base → J1</td><td class="mono">0,112 m</td></tr>
+      <tr><td>J1 → J2 (hombro)</td><td class="mono">0,078 m</td></tr>
+      <tr><td>J2 → J3 (brazo)</td><td class="mono">0,355 m</td></tr>
+      <tr><td>J3 → J4 (antebrazo)</td><td class="mono">0,305 m</td></tr>
+      <tr><td>J4 → J5</td><td class="mono">0,072 m</td></tr>
+      <tr><td>J5 → J6</td><td class="mono">0,064 m</td></tr>
+      <tr><td>J6 → brida</td><td class="mono">0,030 m</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Clips de animación</h2>
+  <table>
+    <thead><tr><th class="mono">Clip</th><th>Duración</th><th>Bucle</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Ciclo_Asistencia</td><td>10,0 s</td><td>sí</td><td>Recoge a la izquierda (J1 −55°), gira y presenta la pieza a la derecha (J1 +50°) con giro de muñeca. Es el ciclo de trabajo por defecto.</td></tr>
+      <tr><td class="mono">Guiado_Manual</td><td>6,0 s</td><td>no</td><td>Pose fluida de enseñanza, movimiento lento y continuo por los seis ejes. Para mostrar el modo de guiado por la mano.</td></tr>
+      <tr><td class="mono">Demo_Ejes</td><td>16,6 s</td><td>sí</td><td>Cada eje barre su rango útil en orden J1→J6. Sirve para verificar que la importación conserva todos los ejes y sus signos.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.1 Fases del ciclo de asistencia</h3>
+  <table>
+    <thead><tr><th>t (s)</th><th>Fase</th><th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th></tr></thead>
+    <tbody>
+      <tr><td>0,0</td><td>Home</td><td>0°</td><td>−35°</td><td>75°</td><td>50°</td><td>0°</td><td>0°</td></tr>
+      <tr><td>1,4</td><td>Aproximación izquierda</td><td>−55°</td><td>−10°</td><td>85°</td><td>25°</td><td>0°</td><td>0°</td></tr>
+      <tr><td>2,4</td><td>Descenso a la pieza</td><td>−55°</td><td>15°</td><td>80°</td><td>−5°</td><td>0°</td><td>0°</td></tr>
+      <tr><td>3,2</td><td><b>Toma</b> (giro de brida)</td><td>−55°</td><td>15°</td><td>80°</td><td>−5°</td><td>0°</td><td>90°</td></tr>
+      <tr><td>4,0</td><td>Elevación</td><td>−55°</td><td>−10°</td><td>85°</td><td>25°</td><td>0°</td><td>90°</td></tr>
+      <tr><td>5,6</td><td>Transferencia</td><td>+50°</td><td>−10°</td><td>85°</td><td>25°</td><td>0°</td><td>90°</td></tr>
+      <tr><td>6,6</td><td>Presentación</td><td>+50°</td><td>15°</td><td>80°</td><td>−5°</td><td>30°</td><td>90°</td></tr>
+      <tr><td>7,6</td><td><b>Entrega</b></td><td>+50°</td><td>15°</td><td>80°</td><td>−5°</td><td>30°</td><td>−90°</td></tr>
+      <tr><td>8,4</td><td>Retirada</td><td>+50°</td><td>−10°</td><td>85°</td><td>25°</td><td>0°</td><td>−90°</td></tr>
+      <tr><td>10,0</td><td>Retorno a Home</td><td>0°</td><td>−35°</td><td>75°</td><td>50°</td><td>0°</td><td>0°</td></tr>
+    </tbody>
+  </table>
+  <p>Si la herramienta montada es una pinza, los instantes de cierre y apertura son <b>t = 3,2 s</b> y <b>t = 7,6 s</b>: ahí conviene emparentar y desemparentar la pieza respecto a <code>TOOL_FLANGE</code>.</p>
+
+  <h2>6. Cómo moverlo</h2>
+  <pre>const gltf = await new GLTFLoader().loadAsync('cobot-6dof.glb');
+scene.add(gltf.scene);
+
+// A · reproducir un clip incluido
+const mixer = new THREE.AnimationMixer(gltf.scene);
+const clip = THREE.AnimationClip.findByName(gltf.animations, 'Ciclo_Asistencia');
+mixer.clipAction(clip).setLoop(THREE.LoopRepeat).play();
+
+// B · control eje por eje
+const J3 = gltf.scene.getObjectByName('J3_elbow');
+J3.rotation.z = THREE.MathUtils.degToRad(90);   // dentro de ±160°
+
+// en el bucle de render, imprescindible:
+mixer.update(clock.getDelta());</pre>
+  <div class="note">
+    <b>Montar una herramienta.</b> Añadir el efector como hijo de <code>TOOL_FLANGE</code> con
+    posición local <code>(0, 0, 0)</code>: hereda automáticamente los seis ejes.
+    Un eventual eje de pinza propio se documenta aparte, en la herramienta.
+  </div>
+
+  <h3>6.1 Reglas de movimiento</h3>
+  <ol>
+    <li>Recortar todo ángulo entrante contra el rango de la tabla 4 antes de escribirlo.</li>
+    <li>Interpolar limitando la velocidad de cada eje; sin saltos instantáneos.</li>
+    <li>Orden natural: J1 (orientar) → J2/J3 (extender) → J4/J5/J6 (orientar herramienta).</li>
+    <li>Como cobot, los perfiles de movimiento son suaves y de velocidad moderada: usar rampas de aceleración largas (0,4–0,6 s) — es parte de su carácter frente al brazo industrial.</li>
+    <li><code>BASE_fixed</code> no se mueve. Para reubicar el cobot, mover el nodo raíz.</li>
+  </ol>
+
+  <h2>7. Papel en el escenario conjunto</h2>
+  <p>Este cobot está preparado para trabajar junto al brazo industrial y la cinta, cada uno como archivo separado. Su papel previsto es de <b>asistencia y alimentación</b>: coloca piezas en la entrada de la cinta (<code>INFEED_STATION</code>) o realiza operaciones secundarias fuera del ciclo principal.</p>
+  <p>Posición recomendada en la celda: junto a la cabeza de entrada de la cinta, con la base en <code>(−1,55 · 0 · 0,50)</code> respecto al origen de la cinta y giro de 90° sobre Y para encarar la banda. El protocolo de coordinación entre los tres activos está en <a href="./Documentacion-Escenario-Conjunto.html">Documentación del escenario conjunto</a>.</p>
+
+  <h2>8. Verificación tras importar</h2>
+  <ul>
+    <li>Existen los siete nodos con nombre exacto, en el orden de la sección 3.</li>
+    <li>Los tres clips aparecen con sus duraciones: 10,0 / 6,0 / 16,6 s.</li>
+    <li><code>Demo_Ejes</code> se reproduce completo sin que ningún eslabón atraviese otro.</li>
+    <li>El cobot mide ≈ 0,62 m en Home y apoya en y = 0.</li>
+    <li>Cuatro materiales PBR con nombre: <code>cobot_orange</code>, <code>joint_charcoal</code>, <code>flange_alu</code>, <code>joint_seal</code>.</li>
+  </ul>
+</doc-page>
+<script src="./doc-page.js"></script>
+</body>
+</html>
