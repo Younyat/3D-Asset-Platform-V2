@@ -238,11 +238,21 @@ Los activos de `3d imported models/celda_robotica/` se integran con su contrato 
 
 J1 gira sobre Y, J2-J4 sobre Z, J5 sobre X y J6 sobre Y. Los clips importados son `Ciclo_Asistencia`, `Guiado_Manual` y `Demo_Ejes`.
 
-![Cobot de celda con movimiento profesional](docs/readme-assets/cell-cobot-motion.gif)
+Vista frontal:
+
+![Cobot de celda en movimiento desde vista frontal](docs/readme-assets/cell-cobot-front-motion.gif)
+
+Vista lateral:
+
+![Cobot de celda en movimiento desde vista lateral](docs/readme-assets/cell-cobot-side-motion.gif)
+
+Vista superior:
+
+![Cobot de celda en movimiento desde vista superior](docs/readme-assets/cell-cobot-top-motion.gif)
 
 **Brazo industrial 6 ejes con pinza**
 
-La captura se genera desde `industrial-arm-6dof.glb`, que es la variante recomendada para conservar escena, materiales y estructura funcional. Si solo existe `industrial-arm-6dof.obj`, la plataforma puede reconstruir el rig desde la documentacion de la celda: J1 Y, J2 Z, J3 Z, J4 Y, J5 Z, J6 Y y dos dedos lineales opuestos en X. La pinza usa coupling/mimic para que los dedos se muevan de forma simetrica.
+El modelo estatico `industrial-arm-6dof.obj` se puede recuperar desde la documentacion de la celda: J1 Y, J2 Z, J3 Z, J4 Y, J5 Z, J6 Y y dos dedos lineales opuestos en X. La pinza usa coupling/mimic para que los dedos se muevan de forma simetrica. Para la demo visual del README se usa `industrial-arm-6dof.glb`, porque conserva mejor la escena, los materiales y la estructura funcional.
 
 ![Brazo industrial de celda con toma desde cinta](docs/readme-assets/cell-industrial-arm-motion.gif)
 
@@ -281,30 +291,6 @@ El flujo real es:
 7. Si no hay contacto, el brazo ejecuta el ciclo vacio y no teletransporta ninguna caja.
 
 La celda real reutiliza el mismo `KinematicGraph` que la celda procedural, pero la geometria visible sale de los GLB de `scenario_1`. Esto permite comparar el prototipo JS contra assets reales sin duplicar la logica mecanica.
-
-### Demos Animadas De Brazos Heredados
-
-Las siguientes capturas se generan desde modelos completos importados en la plataforma. Cada GIF se valida comparando frames y renderizados reales antes de guardarse.
-
-Para estas demos se usan los assets reales de `3d imported models/old_robots/`, porque son los modelos completos disponibles para regresion. `iRobot` y `Rmk3` se recuperan desde OBJ con rig profesional reconstruido; `IRAmk4` se recupera desde 3DS porque ese formato conserva mejor la separacion mecanica del asset.
-
-**iRobot**
-
-![Movimiento completo del brazo iRobot](docs/readme-assets/arm-motion-irobot.gif)
-
-**Rmk3**
-
-![Movimiento completo del brazo Rmk3](docs/readme-assets/arm-motion-rmk3.gif)
-
-**IRAmk4**
-
-![Movimiento completo del brazo IRAmk4](docs/readme-assets/arm-motion-iramk4.gif)
-
-**Brazo industrial**
-
-El paquete se captura desde `industrial-arm-6dof.glb`. La variante `brazo-robot-industrial.obj` sigue soportada como fallback estatico, pero para documentacion y pruebas visuales se usa GLB porque conserva mejor la estructura del rig y evita depender de una reconstruccion posterior.
-
-![Movimiento completo del brazo robot industrial](docs/readme-assets/arm-motion-industrial.gif)
 
 La geometria por si sola no puede demostrar la funcion fisica real de una pieza sin sus conexiones, contactos o especificacion mecanica. Por eso la plataforma automatiza el calculo y las invariantes geometricas, pero deja al usuario validar la funcion mecanica observada antes de aceptarla. Esta separacion evita inventar articulaciones falsas.
 
@@ -433,12 +419,11 @@ Assets actuales:
 - `learned-motion-sequence.png`
 - `piece-reference-center.png` (evidencia Playwright del centro calculado)
 - `piece-rotation-test.png` (evidencia Playwright de la prueba de rotacion)
-- `cell-cobot-motion.gif` (cobot 6 ejes con clip `Ciclo_Asistencia`)
+- `cell-cobot-front-motion.gif` (cobot 6 ejes, vista frontal, clip `Ciclo_Asistencia`)
+- `cell-cobot-side-motion.gif` (cobot 6 ejes, vista lateral, clip `Ciclo_Asistencia`)
+- `cell-cobot-top-motion.gif` (cobot 6 ejes, vista superior, clip `Ciclo_Asistencia`)
 - `cell-industrial-arm-motion.gif` (brazo industrial con clip `Toma_De_Cinta`)
 - `cell-conveyor-motion.gif` (cinta parametrica con clip `Ciclo_Transporte`)
-- `arm-motion-irobot.gif` (animacion completa del brazo iRobot)
-- `arm-motion-rmk3.gif` (animacion completa del brazo Rmk3)
-- `arm-motion-iramk4.gif` (animacion completa del brazo IRAmk4)
 - `arm-motion-industrial.gif` (animacion completa del brazo industrial)
 - `robot-arm-full-motion.gif` (animacion completa del brazo industrial)
 
@@ -484,16 +469,15 @@ npm.cmd run docs:capture:piece-motion
 Para generar las demostraciones mecanicas del README:
 
 ```powershell
-$env:ARM_MODEL_PATH='3d imported models\old_robots\OBJ_Robot.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-irobot.gif'; $env:ARM_GIF_LABEL='iRobot'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\old_robots\Rmk3.obj'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-rmk3.gif'; $env:ARM_GIF_LABEL='Rmk3'; npm.cmd run docs:capture:arm-model
-$env:ARM_MODEL_PATH='3d imported models\old_robots\IRAmk4.3ds'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-iramk4.gif'; $env:ARM_GIF_LABEL='IRAmk4'; npm.cmd run docs:capture:arm-model
 $env:ARM_MODEL_PATH='3d imported models\nuewrobot\brazo-robot-industrial\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\arm-motion-industrial.gif'; $env:ARM_GIF_LABEL='Brazo industrial GLB'; npm.cmd run docs:capture:arm-model
 ```
 
 Para generar las demostraciones de la celda robotica:
 
 ```powershell
-$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-motion.gif'; $env:ARM_GIF_LABEL='Cobot celda'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-front-motion.gif'; $env:ARM_GIF_LABEL='Cobot frontal GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[4.2,2.3,5.8],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-side-motion.gif'; $env:ARM_GIF_LABEL='Cobot lateral GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[6.4,2.1,0.15],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
+$env:ARM_MODEL_PATH='3d imported models\celda_robotica\cobot-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-cobot-top-motion.gif'; $env:ARM_GIF_LABEL='Cobot superior GLB'; $env:ARM_CLIP_NAME='Ciclo_Asistencia'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[0.35,7.2,0.35],"target":[0,1.05,0]}'; npm.cmd run docs:capture:arm-model
 $env:ARM_MODEL_PATH='3d imported models\celda_robotica\industrial-arm-6dof.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-industrial-arm-motion.gif'; $env:ARM_GIF_LABEL='Brazo industrial celda GLB'; $env:ARM_CLIP_NAME='Toma_De_Cinta'; $env:ARM_GIF_MIN_CHANGED='35'; npm.cmd run docs:capture:arm-model
 $env:ARM_MODEL_PATH='3d imported models\celda_robotica\conveyor-belt-2400.glb'; $env:ARM_GIF_OUTPUT='docs\readme-assets\cell-conveyor-motion.gif'; $env:ARM_GIF_LABEL='Cinta celda'; $env:ARM_CLIP_NAME='Ciclo_Transporte'; $env:ARM_GIF_MIN_CHANGED='35'; $env:ARM_GIF_CAMERA='{"position":[2.6,1.35,1.65],"target":[0,0.72,0]}'; npm.cmd run docs:capture:arm-model
 ```
