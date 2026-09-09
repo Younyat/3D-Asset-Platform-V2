@@ -29,6 +29,7 @@ El objetivo principal es reducir el trabajo manual necesario para preparar model
 - Soporte para rigs profesionales de celda robotica: cobot 6 ejes, brazo industrial 6 ejes con pinza y cinta transportadora parametrica.
 - Celda industrial real desde `scenario_1`: robot gantry, cintas, maquina de inspeccion, operador y cajas cargados como GLB reales.
 - Ciclo de celda sincronizado con captura por contacto: el brazo solo levanta una caja si la pinza toca una caja suelta colocada manualmente.
+- Digital Twin Scenario con Modbus local, entidad fisica simulada, gemelo 3D, registros HR, mando visual y entrada BLE multi-dispositivo.
 - Kinematic Authoring M1 para corregir joints, ejes arbitrarios, origen fisico, limites, estado home y validacion del grafo cinematico.
 - Calibracion de piezas aisladas: centro de referencia calculado desde la malla, correccion manual persistente y prueba visual sobre ese pivot.
 - Preflight de exportacion y perfiles GLB para uso generico, Unity, Unreal y Godot.
@@ -405,6 +406,87 @@ npm run desktop:build
 ```
 
 La version de escritorio requiere tener instalado Rust/Tauri. El flujo en navegador funciona sin Rust.
+
+## Digital Twin Scenario Con Modbus
+
+La plataforma V2 incorpora un escenario de gemelo digital para comprobar comunicacion entre una entidad fisica simulada y el robot 3D. El boton esta en la barra superior, junto a `Cell Cycle`, `Inspect All` e `Inspect Pending`, con el nombre `Digital Twin Scenario`.
+
+Arquitectura usada en esta fase:
+
+```text
+Mando visual / BLE IoT -> registros Modbus HR -> Digital Twin Scenario -> kinematicState -> robot 3D
+```
+
+El escenario mantiene dos vistas: la entidad fisica simulada publica registros y el gemelo digital aplica esos datos al modelo 3D seleccionado. La comunicacion usa un bridge HTTP local que expone paquetes y registros equivalentes a un flujo Modbus de prueba.
+
+Para lanzar el mando visual en Windows PowerShell:
+
+```powershell
+npm.cmd run modbus:controller:fresh
+```
+
+Despues abre:
+
+```text
+http://127.0.0.1:8765
+```
+
+Por defecto, ambos lados usan:
+
+```text
+Controller IP: 127.0.0.1
+Controller Port: 8765
+State URL: http://127.0.0.1:8765/state
+Write URL: http://127.0.0.1:8765/write
+```
+
+Flujo de uso:
+
+1. Abrir la plataforma V2 y cargar un robot con `KinematicGraph`.
+2. Pulsar `Digital Twin Scenario` en la barra superior.
+3. En el panel del gemelo, comprobar `Modbus Controller Endpoint`.
+4. Abrir el mando visual y pulsar `Connect`.
+5. En la plataforma, pulsar `Visual Controller` para recibir los registros externos.
+6. Usar `Advanced Details` para ver HR, words hex, paquetes y estado de cliente.
+7. Usar `Disconnect Client` desde la plataforma para cortar el cliente conectado.
+
+Mapa HR principal:
+
+```text
+HR 40101 / J1  giro base derecha/izquierda
+HR 40103 / J2  hombro delante/atras
+HR 40105 / J3  elevacion arriba/abajo
+HR 40107 / J4  muneca vertical
+HR 40109 / J5  muneca lateral
+HR 40111 / J6  giro rotatorio de herramienta
+```
+
+El mando visual permite mover los registros con sliders, teclado, gamepad navegador o dispositivos BLE Texas Instruments. Soporta CC2650 SensorTag Movement, CC2541 SensorTag Accelerometer y CC2541 Keyfob Accelerometer.
+
+Uso BLE multi-dispositivo:
+
+```text
+1. Pulsar Connect BLE Device para anadir el primer SensorTag o Keyfob.
+2. Repetir Connect BLE Device para anadir mas dispositivos.
+3. Cada dispositivo aparece como IoT 1, IoT 2, etc.
+4. Cada tarjeta muestra coordenadas independientes: X1/Y1/Z1, X2/Y2/Z2.
+5. Cada registro HR puede tomar datos de Active, IoT 1, IoT 2 o una combinacion de ejes.
+6. Ejemplo: HR 40101 J1 = X1 y HR 40103 J2 = X2.
+7. Cada eje tiene escala propia: X Scale, Y Scale y Z Scale.
+8. Drive Robot define que dispositivo se usa como Active.
+```
+
+La calibracion automatica permite grabar un movimiento real del SensorTag/Keyfob para un registro concreto. El controlador mide eje dominante, polaridad, energia y ruido, y guarda el perfil en el navegador para que el movimiento fisico tenga la misma direccion semantica que el robot 3D.
+
+Comandos de validacion relacionados:
+
+```powershell
+npm.cmd run test:twin
+npm.cmd run test:modbus-driver
+npm.cmd run test:modbus-controller
+npm.cmd run test:modbus-bridge
+npm.cmd run test:plc-dashboard
+```
 
 ## Assets Del README
 

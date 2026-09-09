@@ -93,6 +93,13 @@ import { createIndustrialSceneModelNode, createIndustrialScenePackNodes, industr
 import { createScenarioOneRealCellNodes } from '../application/industrialScene/scenarioOneRealCell';
 import type { RobotServoState } from '../application/kinematics/robotMotionController';
 import {
+  createPlcTwinProjectForNode,
+  runPlcModbusSimulationFrame,
+  type PlcSimulationFrame,
+  type PlcRegister,
+} from '../application/twin/plcModbusSimulation';
+import type { TwinProject } from '../domain/twin';
+import {
   isDesktopRuntime,
   openProjectNative,
   saveBlobNative,
@@ -694,6 +701,61 @@ type PieceAnalysisState = {
   sourceObjectName?: string;
 };
 
+type PlcDashboardState = {
+  open: boolean;
+  running: boolean;
+  advanced: boolean;
+  externalBridgeEnabled: boolean;
+  externalBridgeOnline: boolean;
+  externalBridgeServerOnline: boolean;
+  externalBridgeClientConnected: boolean;
+  externalBridgeDisconnectedByUser: boolean;
+  externalBridgeUrl: string;
+  externalBridgeClientId?: string;
+  externalBridgeClientIp?: string;
+  externalBridgeClientPort?: string | number;
+  externalBridgeLastReceivedAt?: string;
+  registerOverrides: Record<string, number>;
+  project?: TwinProject;
+  frame?: PlcSimulationFrame;
+  startedAtMs?: number;
+  sequence: number;
+  message: string;
+};
+
+const defaultModbusBridgeUrl = () => {
+  try {
+    return window.localStorage.getItem('assetForge.modbusBridgeUrl') ?? 'http://127.0.0.1:8765';
+  } catch {
+    return 'http://127.0.0.1:8765';
+  }
+};
+
+const normalizeModbusBridgeUrl = (host: string, port: string | number) => {
+  const cleanHost = host.trim() || '127.0.0.1';
+  const cleanPort = String(port).trim() || '8765';
+  return `http://${cleanHost}:${cleanPort}`;
+};
+
+const parseModbusBridgeEndpoint = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname || '127.0.0.1',
+      port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'),
+      stateUrl: `${parsed.origin}/state`,
+      writeUrl: `${parsed.origin}/write`,
+    };
+  } catch {
+    return {
+      host: '127.0.0.1',
+      port: '8765',
+      stateUrl: 'http://127.0.0.1:8765/state',
+      writeUrl: 'http://127.0.0.1:8765/write',
+    };
+  }
+};
+
 export const App = () => {
   const [document, setDocument] = useState<AssetDocument>(loadInitialProject);
   const [past, setPast] = useState<AssetDocument[]>([]);
@@ -722,6 +784,20 @@ export const App = () => {
   const [kinematicEditTarget, setKinematicEditTarget] = useState<KinematicEditTarget | undefined>();
   const [robotCursorGuideNodeId, setRobotCursorGuideNodeId] = useState<string | undefined>();
   const [viewportNotice, setViewportNotice] = useState<string | undefined>();
+  const [plcDashboard, setPlcDashboard] = useState<PlcDashboardState>({
+    open: false,
+    running: false,
+    advanced: false,
+    externalBridgeEnabled: false,
+    externalBridgeOnline: false,
+    externalBridgeServerOnline: false,
+    externalBridgeClientConnected: false,
+    externalBridgeDisconnectedByUser: false,
+    externalBridgeUrl: defaultModbusBridgeUrl(),
+    registerOverrides: {},
+    sequence: 0,
+    message: 'Select a kinematic robot and start the local Modbus test.',
+  });
   const [viewportInspection, setViewportInspection] = useState<ViewportInspectionState>({
     phase: 'idle',
     correctJointIds: [],
@@ -736,6 +812,8 @@ export const App = () => {
   const viewportTestTimerRef = useRef<number | undefined>();
   const viewportNoticeTimerRef = useRef<number | undefined>();
   const kinematicEditSnapshotRef = useRef<{ nodeId: string; jointId: string; joint: KinematicJoint } | undefined>();
+  const plcDashboardRef = useRef<PlcDashboardState>(plcDashboard);
+  const plcBridgeDisconnectLockRef = useRef(false);
 
   const selectedNode = useMemo(
     () => document.nodes.find((node) => node.id === document.selectedNodeId),
@@ -2961,6 +3039,434 @@ export const App = () => {
     };
   }, [setKinematicJointValuesForNode]);
 
+  useEffect(() => {
+    plcDashboardRef.current = plcDashboard;
+  }, [plcDashboard]);
+
+  const selectedKinematicNode = selectedNode && graphFromGeometry(selectedNode.geometry) ? selectedNode : undefined;
+
+  const runPlcDashboardFrame = useCallback(
+    (node: SceneNode, elapsedSeconds: number, sequence: number, project?: TwinProject, registerOverrides?: Record<string, number>) => {
+      const frame = runPlcModbusSimulationFrame(node, {
+        project,
+        elapsedSeconds,
+        sequence,
+        nowMs: Date.now(),
+        registerOverrides,
+      });
+      setKinematicJointValuesForNode(node.id, frame.jointValues);
+      setPlcDashboard((current) => ({
+        ...current,
+        project: frame.project,
+        frame,
+        sequence,
+        message: `${frame.samples.length} Modbus samples reflected in digital twin`,
+      }));
+      return frame;
+    },
+    [setKinematicJointValuesForNode],
+  );
+
+  const startPlcDashboard = () => {
+    if (!selectedKinematicNode) {
+      setPlcDashboard((current) => ({ ...current, open: true, running: false, message: 'Select a robot or machine with KinematicGraph first.' }));
+      setStatus('Select a kinematic object first');
+      return;
+    }
+    try {
+      const project = createPlcTwinProjectForNode(selectedKinematicNode, { timestampUtc: new Date().toISOString() });
+      const startedAtMs = performance.now();
+      const frame = runPlcDashboardFrame(selectedKinematicNode, 0, plcDashboard.sequence + 1, project, plcDashboard.registerOverrides);
+      setPlcDashboard((current) => ({
+        ...current,
+        open: true,
+        running: true,
+        project: frame.project,
+        frame,
+        startedAtMs,
+        sequence: current.sequence + 1,
+        message: 'Local PLC simulator is publishing Modbus registers.',
+      }));
+      setStatus('PLC Modbus test running');
+    } catch (error) {
+      setPlcDashboard((current) => ({ ...current, open: true, running: false, message: error instanceof Error ? error.message : 'PLC dashboard failed' }));
+      setStatus(error instanceof Error ? error.message : 'PLC dashboard failed');
+    }
+  };
+
+  const stopPlcDashboard = () => {
+    setPlcDashboard((current) => ({ ...current, running: false, message: 'PLC simulator stopped; last digital twin state is held.' }));
+    setStatus('PLC Modbus test stopped');
+  };
+
+  const togglePlcDashboard = () => {
+    setActiveView('workspace');
+    setPlcDashboard((current) => ({
+      ...current,
+      open: !current.open,
+      running: current.open ? false : current.running,
+      message: !current.open && !selectedKinematicNode ? 'Select a robot or machine with KinematicGraph first.' : current.message,
+    }));
+  };
+
+  const stepPlcDashboard = () => {
+    if (!selectedKinematicNode) return;
+    try {
+      const current = plcDashboardRef.current;
+      const elapsedSeconds = ((performance.now() - (current.startedAtMs ?? performance.now())) / 1000) + 0.35;
+      runPlcDashboardFrame(selectedKinematicNode, elapsedSeconds, current.sequence + 1, current.project, current.registerOverrides);
+      setStatus('PLC Modbus step applied');
+    } catch (error) {
+      setPlcDashboard((current) => ({ ...current, running: false, message: error instanceof Error ? error.message : 'PLC step failed' }));
+      setStatus(error instanceof Error ? error.message : 'PLC step failed');
+    }
+  };
+
+  useEffect(() => {
+    if (!plcDashboard.running || !selectedKinematicNode) return undefined;
+    const timer = window.setInterval(() => {
+      const current = plcDashboardRef.current;
+      const startedAtMs = current.startedAtMs ?? performance.now();
+      const elapsedSeconds = (performance.now() - startedAtMs) / 1000;
+      try {
+        runPlcDashboardFrame(selectedKinematicNode, elapsedSeconds, current.sequence + 1, current.project, current.registerOverrides);
+      } catch (error) {
+        setPlcDashboard((state) => ({ ...state, running: false, message: error instanceof Error ? error.message : 'PLC simulator failed' }));
+      }
+    }, 180);
+    return () => window.clearInterval(timer);
+  }, [plcDashboard.running, selectedKinematicNode, runPlcDashboardFrame]);
+
+  const togglePlcDashboardAdvanced = () => {
+    setPlcDashboard((current) => ({ ...current, advanced: !current.advanced }));
+  };
+
+  type TerminalModbusPayload = {
+    sequence?: number;
+    timestampUtc?: string;
+    controllerEndpoint?: {
+      host?: string;
+      port?: string | number;
+      stateUrl?: string;
+      writeUrl?: string;
+    };
+    client?: {
+      ip?: string;
+      port?: string | number;
+    };
+    connectedClients?: Array<{
+      id?: string;
+      ip?: string;
+      port?: string | number;
+      endpoint?: string;
+      connectedAtUtc?: string;
+      lastSeenUtc?: string;
+    }>;
+    stateReaders?: Array<{
+      id?: string;
+      kind?: string;
+      ip?: string;
+      port?: string | number;
+      connectedAtUtc?: string;
+      lastSeenUtc?: string;
+    }>;
+    registers?: Array<{
+      address?: number;
+      displayAddress?: string;
+      signalId?: string;
+      jointId?: string;
+      jointName?: string;
+      value?: number;
+      registers?: number[];
+    }>;
+    modbusPackets?: PlcSimulationFrame['modbusPackets'];
+  };
+
+  const applyTerminalModbusPayload = useCallback(
+    (payload: TerminalModbusPayload, bridgeUrl: string) => {
+      if (plcBridgeDisconnectLockRef.current) return;
+      const endpoint = parseModbusBridgeEndpoint(bridgeUrl);
+      const receivedAt = payload.timestampUtc ?? new Date().toISOString();
+      const activeClient = payload.connectedClients?.[0];
+      const activeReader = payload.stateReaders?.[0];
+      const clientIp = activeClient?.ip ?? activeReader?.ip ?? payload.client?.ip ?? payload.controllerEndpoint?.host ?? endpoint.host;
+      if (!selectedKinematicNode) {
+        setPlcDashboard((current) => ({
+          ...current,
+          open: true,
+          externalBridgeOnline: true,
+          externalBridgeServerOnline: true,
+          externalBridgeClientConnected: Boolean(activeClient || activeReader),
+          externalBridgeDisconnectedByUser: false,
+          externalBridgeClientId: activeClient?.id,
+          externalBridgeClientIp: clientIp,
+          externalBridgeClientPort: activeClient?.port ?? activeReader?.port ?? payload.client?.port,
+          externalBridgeLastReceivedAt: receivedAt,
+          message: 'Visual Modbus controller online. Select a kinematic robot to reflect registers into the twin.',
+        }));
+        return;
+      }
+      const current = plcDashboardRef.current;
+      const overrides = Object.fromEntries(
+        (payload.registers ?? [])
+          .filter((register) => Number.isFinite(register.value))
+          .flatMap((register) => {
+            const value = Number(register.value);
+            return [
+              register.displayAddress ? [register.displayAddress, value] : undefined,
+              register.signalId ? [register.signalId, value] : undefined,
+              register.jointId ? [register.jointId, value] : undefined,
+            ].filter(Boolean) as Array<[string, number]>;
+          }),
+      );
+      const project = current.project ?? createPlcTwinProjectForNode(selectedKinematicNode, { timestampUtc: payload.timestampUtc ?? new Date().toISOString() });
+      const frame = runPlcDashboardFrame(selectedKinematicNode, 0, Number(payload.sequence ?? current.sequence + 1), project, overrides);
+      const byDisplayAddress = new Map((payload.registers ?? []).map((register) => [register.displayAddress, register]));
+      const byIndex = payload.registers ?? [];
+      const physicalRegisters = frame.physicalRegisters.map((register, index) => {
+        const external = byDisplayAddress.get(register.displayAddress) ?? byIndex[index];
+        if (!external || !Number.isFinite(external.value)) return register;
+        return {
+          ...register,
+          address: external.address ?? register.address,
+          displayAddress: external.displayAddress ?? register.displayAddress,
+          jointName: external.jointName ?? register.jointName,
+          value: Number(external.value),
+          registers: external.registers ?? register.registers,
+        };
+      });
+      const nextFrame: PlcSimulationFrame = {
+        ...frame,
+        physicalRegisters,
+        modbusPackets: payload.modbusPackets?.length ? payload.modbusPackets : frame.modbusPackets,
+      };
+      setKinematicJointValuesForNode(selectedKinematicNode.id, frame.jointValues);
+      setPlcDashboard((state) => ({
+        ...state,
+        open: true,
+        running: false,
+        externalBridgeEnabled: true,
+        externalBridgeOnline: true,
+        externalBridgeServerOnline: true,
+        externalBridgeClientConnected: Boolean(activeClient || activeReader),
+        externalBridgeDisconnectedByUser: false,
+        externalBridgeUrl: bridgeUrl,
+        externalBridgeClientId: activeClient?.id,
+        externalBridgeClientIp: clientIp,
+        externalBridgeClientPort: activeClient?.port ?? activeReader?.port ?? payload.client?.port,
+        externalBridgeLastReceivedAt: receivedAt,
+        registerOverrides: overrides,
+        project: nextFrame.project,
+        frame: nextFrame,
+        sequence: Number(payload.sequence ?? frame.samples[0]?.sequence ?? state.sequence + 1),
+        message: `Visual Modbus controller online: ${(payload.registers ?? []).length} HR values reflected in digital twin.`,
+      }));
+    },
+    [runPlcDashboardFrame, selectedKinematicNode, setKinematicJointValuesForNode],
+  );
+
+  const applyTerminalBridgeHealth = useCallback((payload: TerminalModbusPayload, bridgeUrl: string) => {
+    if (plcBridgeDisconnectLockRef.current) return;
+    const endpoint = parseModbusBridgeEndpoint(bridgeUrl);
+    const activeClient = payload.connectedClients?.[0];
+    const activeReader = payload.stateReaders?.[0];
+    setPlcDashboard((current) => ({
+      ...current,
+      externalBridgeServerOnline: true,
+      externalBridgeClientConnected: current.externalBridgeDisconnectedByUser ? false : current.externalBridgeEnabled ? Boolean(activeClient || activeReader) : Boolean(activeClient),
+      externalBridgeClientId: activeClient?.id,
+      externalBridgeClientIp: current.externalBridgeDisconnectedByUser
+        ? undefined
+        : current.externalBridgeEnabled
+          ? activeClient?.ip ?? activeReader?.ip ?? payload.client?.ip ?? endpoint.host
+          : activeClient?.ip ?? payload.client?.ip ?? endpoint.host,
+      externalBridgeClientPort: current.externalBridgeDisconnectedByUser
+        ? undefined
+        : current.externalBridgeEnabled
+          ? activeClient?.port ?? activeReader?.port ?? payload.client?.port ?? endpoint.port
+          : activeClient?.port ?? payload.client?.port ?? endpoint.port,
+      message:
+        !current.externalBridgeDisconnectedByUser && !current.externalBridgeEnabled && activeClient
+          ? `Visual Modbus controller detected on ${bridgeUrl}. Press Visual Controller to start RX.`
+          : current.message,
+    }));
+  }, []);
+
+  const pollTerminalBridgeHealth = useCallback(async () => {
+    const bridgeUrl = plcDashboardRef.current.externalBridgeUrl;
+    try {
+      const response = await fetch(`${bridgeUrl}/health`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as TerminalModbusPayload;
+      applyTerminalBridgeHealth(payload, bridgeUrl);
+    } catch {
+      setPlcDashboard((current) => ({
+        ...current,
+        externalBridgeServerOnline: false,
+        externalBridgeClientConnected: false,
+        externalBridgeClientId: undefined,
+        externalBridgeClientIp: undefined,
+        externalBridgeClientPort: undefined,
+      }));
+    }
+  }, [applyTerminalBridgeHealth]);
+
+  const pollTerminalModbusBridge = useCallback(async () => {
+    const bridgeUrl = plcDashboardRef.current.externalBridgeUrl;
+    try {
+      const response = await fetch(`${bridgeUrl}/state`, {
+        cache: 'no-store',
+        headers: {
+          'X-Asset-Forge-Client': 'platform-3d',
+          'X-Asset-Forge-Session': 'platform-3d-main',
+        },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as TerminalModbusPayload;
+      applyTerminalModbusPayload(payload, bridgeUrl);
+    } catch (error) {
+      setPlcDashboard((current) => ({
+        ...current,
+        externalBridgeOnline: false,
+        externalBridgeServerOnline: false,
+        externalBridgeClientConnected: false,
+        externalBridgeClientId: undefined,
+        externalBridgeClientIp: undefined,
+        externalBridgeClientPort: undefined,
+        externalBridgeLastReceivedAt: undefined,
+        message: `Visual Modbus controller offline. Run: npm.cmd run modbus:controller`,
+      }));
+    }
+  }, [applyTerminalModbusPayload]);
+
+  const toggleTerminalModbusBridge = () => {
+    setPlcDashboard((current) => {
+      const enabled = !current.externalBridgeEnabled;
+      if (enabled) plcBridgeDisconnectLockRef.current = false;
+      return {
+        ...current,
+        open: true,
+        running: enabled ? false : current.running,
+        externalBridgeEnabled: enabled,
+        externalBridgeDisconnectedByUser: false,
+        externalBridgeOnline: enabled ? current.externalBridgeOnline : false,
+        externalBridgeClientConnected: enabled ? current.externalBridgeClientConnected : false,
+        externalBridgeClientId: enabled ? current.externalBridgeClientId : undefined,
+        externalBridgeClientIp: enabled ? current.externalBridgeClientIp : undefined,
+        externalBridgeClientPort: enabled ? current.externalBridgeClientPort : undefined,
+        externalBridgeLastReceivedAt: enabled ? current.externalBridgeLastReceivedAt : undefined,
+        message: enabled ? `Connecting to visual Modbus controller on ${current.externalBridgeUrl}...` : 'Visual Modbus controller disconnected.',
+      };
+    });
+  };
+
+  const disconnectTerminalModbusClient = () => {
+    plcBridgeDisconnectLockRef.current = true;
+    const current = plcDashboardRef.current;
+    if (current.externalBridgeClientId) {
+      void fetch(`${current.externalBridgeUrl}/client-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: current.externalBridgeClientId, status: 'disconnected', endpoint: current.externalBridgeUrl }),
+      }).catch(() => undefined);
+    }
+    setPlcDashboard((state) => ({
+      ...state,
+      externalBridgeEnabled: false,
+      externalBridgeOnline: false,
+      externalBridgeClientConnected: false,
+      externalBridgeDisconnectedByUser: true,
+      externalBridgeClientId: undefined,
+      externalBridgeClientIp: undefined,
+      externalBridgeClientPort: undefined,
+      externalBridgeLastReceivedAt: undefined,
+      message: 'Visual Modbus controller client disconnected.',
+    }));
+    setStatus('Visual controller disconnected');
+  };
+
+  const updateModbusBridgeEndpoint = (field: 'host' | 'port', value: string) => {
+    plcBridgeDisconnectLockRef.current = false;
+    setPlcDashboard((current) => {
+      const endpoint = parseModbusBridgeEndpoint(current.externalBridgeUrl);
+      const nextUrl = normalizeModbusBridgeUrl(field === 'host' ? value : endpoint.host, field === 'port' ? value : endpoint.port);
+      try {
+        window.localStorage.setItem('assetForge.modbusBridgeUrl', nextUrl);
+      } catch {
+        // Local storage can be unavailable in private/browser-restricted contexts.
+      }
+      return {
+        ...current,
+        externalBridgeUrl: nextUrl,
+        externalBridgeOnline: false,
+        externalBridgeServerOnline: false,
+        externalBridgeClientConnected: false,
+        externalBridgeDisconnectedByUser: false,
+        externalBridgeClientId: undefined,
+        externalBridgeClientIp: undefined,
+        externalBridgeClientPort: undefined,
+        externalBridgeLastReceivedAt: undefined,
+        message: `Visual Modbus controller endpoint set to ${nextUrl}`,
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!plcDashboard.open || !plcDashboard.externalBridgeEnabled) return undefined;
+    void pollTerminalBridgeHealth();
+    const timer = window.setInterval(() => {
+      void pollTerminalBridgeHealth();
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [plcDashboard.open, plcDashboard.externalBridgeEnabled, pollTerminalBridgeHealth]);
+
+  useEffect(() => {
+    if (!plcDashboard.open || !plcDashboard.externalBridgeEnabled) return undefined;
+    void pollTerminalModbusBridge();
+    const timer = window.setInterval(() => {
+      void pollTerminalModbusBridge();
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [plcDashboard.open, plcDashboard.externalBridgeEnabled, pollTerminalModbusBridge]);
+
+  const writePlcRegisterValue = (signalId: string, value: number) => {
+    if (!selectedKinematicNode || !Number.isFinite(value)) return;
+    const current = plcDashboardRef.current;
+    const overrides = { ...current.registerOverrides, [signalId]: value };
+    const register = current.frame?.physicalRegisters.find((item) => item.signalId === signalId);
+    if (current.externalBridgeEnabled) {
+      void fetch(`${current.externalBridgeUrl}/write`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signalId,
+          jointId: register?.jointId,
+          displayAddress: register?.displayAddress,
+          value,
+        }),
+      }).catch(() => undefined);
+    }
+    try {
+      const project = current.project ?? createPlcTwinProjectForNode(selectedKinematicNode, { timestampUtc: new Date().toISOString() });
+      const frame = runPlcDashboardFrame(selectedKinematicNode, 0, current.sequence + 1, project, overrides);
+      setPlcDashboard((state) => ({
+        ...state,
+        open: true,
+        running: false,
+        externalBridgeLastReceivedAt: new Date().toISOString(),
+        registerOverrides: overrides,
+        project: frame.project,
+        frame,
+        sequence: current.sequence + 1,
+        message: `Manual Modbus register write reflected in digital twin: ${signalId}`,
+      }));
+      setStatus('Manual Modbus value applied');
+    } catch (error) {
+      setPlcDashboard((state) => ({ ...state, running: false, message: error instanceof Error ? error.message : 'Manual Modbus write failed' }));
+      setStatus(error instanceof Error ? error.message : 'Manual Modbus write failed');
+    }
+  };
+
   const toggleRobotCursorGuideForNode = (nodeId: string) => {
     setRobotCursorGuideNodeId((current) => {
       const next = current === nodeId ? undefined : nodeId;
@@ -3773,6 +4279,34 @@ export const App = () => {
           </button>
         </div>
 
+        <div className="toolbar-group cycle-tools">
+          <button
+            className={`plc-top-button ${plcDashboard.open ? 'active' : ''}`}
+            title="Open the Digital Twin Scenario with a simulated physical robot, Modbus registers and a synchronized 3D twin."
+            onClick={togglePlcDashboard}
+          >
+            <Activity size={18} />
+            <span>Digital Twin Scenario</span>
+          </button>
+          <button
+            className={industrialCellDemoActive ? 'active' : ''}
+            title="Run the complete industrial cell cycle with one synchronized clock."
+            disabled={!hasIndustrialCellNodes}
+            onClick={toggleIndustrialCellCycle}
+          >
+            {industrialCellDemoActive ? <Pause size={18} /> : <Activity size={18} />}
+            <span>Cell Cycle</span>
+          </button>
+          <button title="Inspect All Joints starts a viewport-guided inspection and waits for Correct, Incorrect or Skip on each joint." disabled={!selectedNode || selectedNode.geometry.kind !== 'imported-model'} onClick={() => startInspectAllJoints(false)}>
+            <Play size={18} />
+            <span>Inspect All</span>
+          </button>
+          <button title="Inspect Pending reviews only joints that are not already validated." disabled={!selectedNode || selectedNode.geometry.kind !== 'imported-model'} onClick={() => startInspectAllJoints(true)}>
+            <Focus size={18} />
+            <span>Inspect Pending</span>
+          </button>
+        </div>
+
         <div className="toolbar-group">
           <button title="Duplicate selected object" disabled={!selectedNode} onClick={duplicateSelected}>
             <Copy size={17} />
@@ -3817,23 +4351,6 @@ export const App = () => {
         </div>
 
         <div className="toolbar-group push-right">
-          <button
-            className={industrialCellDemoActive ? 'active' : ''}
-            title="Run the complete industrial cell cycle with one synchronized clock."
-            disabled={!hasIndustrialCellNodes}
-            onClick={toggleIndustrialCellCycle}
-          >
-            {industrialCellDemoActive ? <Pause size={18} /> : <Activity size={18} />}
-            <span>Cell Cycle</span>
-          </button>
-          <button title="Inspect All Joints starts a viewport-guided inspection and waits for Correct, Incorrect or Skip on each joint." disabled={!selectedNode || selectedNode.geometry.kind !== 'imported-model'} onClick={() => startInspectAllJoints(false)}>
-            <Play size={18} />
-            <span>Inspect All</span>
-          </button>
-          <button title="Inspect Pending reviews only joints that are not already validated." disabled={!selectedNode || selectedNode.geometry.kind !== 'imported-model'} onClick={() => startInspectAllJoints(true)}>
-            <Focus size={18} />
-            <span>Inspect Pending</span>
-          </button>
           <button title="Home returns the whole mechanism to its defined home configuration." disabled={!selectedNode || selectedNode.geometry.kind !== 'imported-model'} onClick={() => selectedNode && resetKinematicPoseForNode(selectedNode.id)}>
             <RotateCw size={18} />
             <span>Home</span>
@@ -4012,6 +4529,22 @@ export const App = () => {
           }}
           onStatsChange={setStats}
         />
+
+        {plcDashboard.open && activeView === 'workspace' && (
+          <PlcModbusDashboard
+            node={selectedKinematicNode}
+            state={plcDashboard}
+            onStart={startPlcDashboard}
+            onStop={stopPlcDashboard}
+            onStep={stepPlcDashboard}
+            onToggleAdvanced={togglePlcDashboardAdvanced}
+            onToggleTerminalBridge={toggleTerminalModbusBridge}
+            onDisconnectTerminalBridge={disconnectTerminalModbusClient}
+            onEndpointChange={updateModbusBridgeEndpoint}
+            onWriteRegister={writePlcRegisterValue}
+            onClose={() => setPlcDashboard((current) => ({ ...current, open: false, running: false }))}
+          />
+        )}
 
         {(viewportInspection.phase !== 'idle' || Boolean(viewportInspection.inspectedJointIds?.length)) && viewportInspection.nodeId && viewportInspection.jointId && activeView === 'workspace' && (
           <div className={`viewport-inspection-card phase-${viewportInspection.phase}`} onClick={(event) => event.stopPropagation()}>
@@ -4861,6 +5394,313 @@ const Slider = ({ label, value, min, max, step, onChange }: SliderProps) => (
 );
 
 const formatVector = (values: number[] | undefined, digits = 3) => (values?.map((value) => Number(value).toFixed(digits)).join(', ') ?? 'n/a');
+
+type PlcModbusDashboardProps = {
+  node?: SceneNode;
+  state: PlcDashboardState;
+  onStart: () => void;
+  onStop: () => void;
+  onStep: () => void;
+  onToggleAdvanced: () => void;
+  onToggleTerminalBridge: () => void;
+  onDisconnectTerminalBridge: () => void;
+  onEndpointChange: (field: 'host' | 'port', value: string) => void;
+  onWriteRegister: (signalId: string, value: number) => void;
+  onClose: () => void;
+};
+
+const clampPlcValue = (value: number, min = -3.14, max = 3.14) => Math.max(min, Math.min(max, value));
+
+const registerValueLimits = (register: PlcRegister) => {
+  const lowerName = register.jointName.toLowerCase();
+  if (lowerName.includes('pinza') || lowerName.includes('gripper') || lowerName.includes('finger')) return { min: 0, max: 1 };
+  if (lowerName.includes('linear') || lowerName.includes('rail') || lowerName.includes('conveyor')) return { min: -1, max: 1 };
+  return { min: -3.14, max: 3.14 };
+};
+
+const formatHexPair = (values: number[]) => values.map((value) => `0x${value.toString(16).padStart(4, '0').toUpperCase()}`).join(' ');
+
+const buildPlcMirrorDocument = (node: SceneNode | undefined, rows: PlcRegister[], name: string): AssetDocument | undefined => {
+  if (!node || !('kinematicGraph' in node.geometry) || !node.geometry.kinematicGraph) return undefined;
+  const graph = node.geometry.kinematicGraph;
+  const baseState = node.geometry.kinematicState ?? createHomeKinematicState(graph);
+  const rowValues = Object.fromEntries(rows.map((row) => [row.jointId, row.value]));
+  const mirrorNode: SceneNode = {
+    ...node,
+    id: `${node.id}-${name}`,
+    name,
+    transform: {
+      position: [0, 0, 0],
+      rotation: node.transform.rotation,
+      scale: node.transform.scale,
+    },
+    geometry: {
+      ...node.geometry,
+      kinematicGraph: graph,
+      kinematicState: {
+        homeJointValues: { ...baseState.homeJointValues },
+        jointValues: { ...baseState.homeJointValues, ...baseState.jointValues, ...rowValues },
+      },
+    },
+  };
+  return {
+    schemaVersion: 1,
+    metadata: {
+      id: `${node.id}-${name}-plc-mirror`,
+      name,
+      author: 'local-simulator',
+      createdAt: node.createdAt,
+      updatedAt: new Date().toISOString(),
+    },
+    nodes: [mirrorNode],
+    selectedNodeId: mirrorNode.id,
+  };
+};
+
+const PlcRobotMirror = ({
+  node,
+  title,
+  subtitle,
+  rows,
+  editable,
+  running,
+  onWriteRegister,
+}: {
+  node?: SceneNode;
+  title: string;
+  subtitle: string;
+  rows: PlcRegister[];
+  editable?: boolean;
+  running?: boolean;
+  onWriteRegister?: (signalId: string, value: number) => void;
+}) => {
+  const mirrorDocument = useMemo(() => buildPlcMirrorDocument(node, rows, title), [node, rows, title]);
+  const noop = useCallback(() => undefined, []);
+  const noopTransform = useCallback(() => undefined, []);
+  const noopPartTransforms = useCallback(() => undefined, []);
+  const noopJointPose = useCallback(() => undefined, []);
+  const noopKinematicPoint = useCallback(() => undefined, []);
+  const noopKinematicAxis = useCallback(() => undefined, []);
+  const noopRobotGuide = useCallback(() => undefined, []);
+  const noopPieceCenter = useCallback(() => undefined, []);
+  const noopPartSelection = useCallback(() => undefined, []);
+  const noopStats = useCallback(() => undefined, []);
+
+  return (
+    <section className="plc-robot-screen">
+      <div className="plc-screen-head">
+        <div>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+        <span className={running ? 'plc-live-pill' : 'plc-idle-pill'}>{running ? 'LIVE' : 'HOLD'}</span>
+      </div>
+      <div className="plc-robot-view" aria-label={`${title} robot mirror`}>
+        {mirrorDocument ? (
+          <ThreeViewport
+            document={mirrorDocument}
+            tool="select"
+            partEditMode="free"
+            snapEnabled={false}
+            onSelect={noop}
+            onTransformCommit={noopTransform}
+            onImportedPartTransformsCommit={noopPartTransforms}
+            onJointPoseChange={noopJointPose}
+            onKinematicPointPick={noopKinematicPoint}
+            onKinematicAxisChange={noopKinematicAxis}
+            onRobotCursorGuide={noopRobotGuide}
+            onPieceReferenceCenterEstimate={noopPieceCenter}
+            onPartSelectionChange={noopPartSelection}
+            onStatsChange={noopStats}
+          />
+        ) : (
+          <div className="empty-state compact">Select a robot with KinematicGraph to render the real 3D mirror.</div>
+        )}
+      </div>
+      <div className="plc-mini-registers">
+        {rows.slice(0, 6).map((register) => {
+          const limits = registerValueLimits(register);
+          const value = clampPlcValue(register.value, limits.min, limits.max);
+          return (
+            <label key={`${title}-${register.signalId}`} className="plc-register-control">
+              <span>{register.jointName}</span>
+              <input
+                type="range"
+                min={limits.min}
+                max={limits.max}
+                step="0.01"
+                value={value}
+                disabled={!editable}
+                onChange={(event) => onWriteRegister?.(register.signalId, Number(event.target.value))}
+              />
+              <strong>{value.toFixed(2)}</strong>
+            </label>
+          );
+        })}
+        {!rows.length && <div className="empty-state compact">Run or Step to create live Modbus registers.</div>}
+      </div>
+    </section>
+  );
+};
+
+const PlcModbusDashboard = ({ node, state, onStart, onStop, onStep, onToggleAdvanced, onToggleTerminalBridge, onDisconnectTerminalBridge, onEndpointChange, onWriteRegister, onClose }: PlcModbusDashboardProps) => {
+  const registers = state.frame?.physicalRegisters ?? [];
+  const twinState = state.frame?.digitalTwinState ?? [];
+  const visibleRows = Math.max(registers.length, twinState.length);
+  const endpoint = parseModbusBridgeEndpoint(state.externalBridgeUrl);
+  const receivedLabel = state.externalBridgeLastReceivedAt ? new Date(state.externalBridgeLastReceivedAt).toLocaleTimeString() : 'none';
+  const clientLabel = state.externalBridgeClientIp ?? endpoint.host;
+  const clientStatus = state.externalBridgeClientConnected ? 'connected' : state.externalBridgeServerOnline ? 'waiting' : 'off';
+  const twinRows: PlcRegister[] = twinState.map((item, index) => {
+    const source = registers.find((register) => register.signalId === state.frame?.samples[index]?.signalId || register.jointId === item.jointId);
+    return {
+      address: source?.address ?? index * 2,
+      displayAddress: item.modbusAddress || source?.displayAddress || String(40101 + index * 2),
+      signalId: source?.signalId ?? item.signalPath,
+      jointId: item.jointId,
+      jointName: item.jointName,
+      value: item.value,
+      registers: source?.registers ?? [],
+    };
+  });
+
+  return (
+    <div className={`plc-dashboard ${state.advanced ? 'advanced' : ''}`} onClick={(event) => event.stopPropagation()}>
+      <div className="plc-dashboard-head">
+        <div>
+          <h2>Digital Twin Scenario</h2>
+          <p>{node ? `${node.name} | Physical entity -> Modbus TCP -> Digital twin` : 'No kinematic object selected'}</p>
+        </div>
+        <div className="plc-dashboard-head-right">
+          <div className="plc-dashboard-actions">
+            <button title="Run simulated physical entity and publish Modbus registers" disabled={!node || state.running} onClick={onStart}>
+              <Play size={15} />
+              <span>Run</span>
+            </button>
+            <button title="Apply one Modbus polling cycle" disabled={!node} onClick={onStep}>
+              <Activity size={15} />
+              <span>Step</span>
+            </button>
+            <button title="Stop simulated PLC publishing" disabled={!state.running} onClick={onStop}>
+              <Pause size={15} />
+              <span>Stop</span>
+            </button>
+            <button
+              className={state.externalBridgeEnabled ? 'active terminal-bridge-button' : 'terminal-bridge-button'}
+              title={`Read live Modbus HR values from the visual gamepad controller on ${endpoint.host}:${endpoint.port}.`}
+              disabled={!node}
+              onClick={onToggleTerminalBridge}
+            >
+              <Activity size={15} />
+              <span>Visual Controller</span>
+            </button>
+            <button
+              className="disconnect-bridge-button"
+              title="Disconnect the visual controller client and stop reading live Modbus HR values."
+              disabled={!state.externalBridgeEnabled && !state.externalBridgeClientConnected}
+              onClick={onDisconnectTerminalBridge}
+            >
+              <X size={15} />
+              <span>Disconnect Client</span>
+            </button>
+            <button className={state.advanced ? 'active' : ''} title="Show Modbus registers, packet hex frames and signal binding details" disabled={!node} onClick={onToggleAdvanced}>
+              <ShieldCheck size={15} />
+              <span>Advanced Details</span>
+            </button>
+            <button title="Close PLC test dashboard" onClick={onClose}>
+              <X size={15} />
+            </button>
+          </div>
+          <div className="plc-endpoint-mini" aria-label="Modbus controller connection status">
+            <label>
+              <span>IP</span>
+              <input value={endpoint.host} onChange={(event) => onEndpointChange('host', event.target.value)} />
+            </label>
+            <label>
+              <span>Port</span>
+              <input value={endpoint.port} inputMode="numeric" onChange={(event) => onEndpointChange('port', event.target.value)} />
+            </label>
+            <span className={state.externalBridgeOnline ? 'plc-bridge-online' : 'plc-bridge-offline'}>RX {state.externalBridgeOnline ? 'yes' : 'no'}</span>
+            <span className={state.externalBridgeServerOnline ? 'plc-bridge-online' : 'plc-bridge-offline'}>server {state.externalBridgeServerOnline ? 'online' : 'off'}</span>
+            <span className={state.externalBridgeClientConnected ? 'plc-bridge-online' : 'plc-bridge-offline'}>client {clientStatus}</span>
+            <code title={endpoint.stateUrl}>Modbus Controller Endpoint {endpoint.host}:{endpoint.port} | client {clientLabel} | last {receivedLabel}</code>
+          </div>
+        </div>
+      </div>
+
+      <div className="plc-flow">
+        <span className={state.running ? 'live' : ''}>Simulated physical entity</span>
+        <strong>Modbus HR</strong>
+        <span>Digital twin 3D</span>
+      </div>
+
+      <div className="plc-twin-split">
+        <PlcRobotMirror
+          node={node}
+          title="Entidad Fisica Simulada"
+          subtitle="PLC visual: mueve registros HR y publica paquetes Modbus."
+          rows={registers}
+          editable
+          running={state.running}
+          onWriteRegister={onWriteRegister}
+        />
+        <PlcRobotMirror
+          node={node}
+          title="Gemelo Digital 3D"
+          subtitle="Recibe datos decodificados y actualiza kinematicState."
+          rows={twinRows.length ? twinRows : registers}
+          running={state.running}
+        />
+      </div>
+
+      {state.advanced && (
+        <div className="plc-advanced-details">
+          <section>
+            <h3>Modbus Register Map</h3>
+            <div className="plc-register-list">
+              {registers.map((register) => (
+                <div key={`map-${register.signalId}`} className="plc-register-row">
+                  <span>{register.jointName}</span>
+                  <strong>HR {register.displayAddress}</strong>
+                  <small>
+                    wire {register.address} | f32 BE high-low | words {formatHexPair(register.registers)} | value {register.value.toFixed(4)}
+                  </small>
+                </div>
+              ))}
+              {!registers.length && <div className="empty-state compact">No register map generated yet.</div>}
+            </div>
+          </section>
+          <section>
+            <h3>Live Modbus TCP Packets</h3>
+            <div className="plc-packet-list">
+              {(state.frame?.modbusPackets ?? []).slice(-8).map((packet, index) => (
+                <div key={`packet-${packet.transactionId}-${packet.direction}-${index}`} className={`plc-packet ${packet.direction}`}>
+                  <div>
+                    <strong>{packet.direction === 'request' ? 'PLC -> Twin' : 'Twin <- PLC'}</strong>
+                    <span>
+                      TID {packet.transactionId} | Unit {packet.unitId} | FC {packet.functionCode} | {packet.decoded}
+                    </span>
+                  </div>
+                  <code>{packet.hex}</code>
+                </div>
+              ))}
+              {!(state.frame?.modbusPackets?.length) && <div className="empty-state compact">Run or Step to inspect packet frames.</div>}
+            </div>
+          </section>
+        </div>
+      )}
+
+      <footer className="plc-dashboard-footer">
+        <span>{state.message}</span>
+        <span className={state.externalBridgeOnline ? 'plc-bridge-online' : 'plc-bridge-offline'}>
+          controller {state.externalBridgeEnabled ? (state.externalBridgeOnline ? 'online' : 'waiting') : 'off'}
+        </span>
+        <span>{visibleRows} joints</span>
+        <span>seq {state.sequence}</span>
+      </footer>
+    </div>
+  );
+};
 
 type KinematicGraphPanelProps = {
   node: SceneNode;

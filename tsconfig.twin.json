@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".tmp/twin-tests",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "src/domain/model.ts",
+    "src/domain/kinematics/**/*.ts",
+    "src/domain/mechanics/**/*.ts",
+    "src/domain/twin/**/*.ts",
+    "src/application/industrialScene/industrialScenePack.ts",
+    "src/application/twin/**/*.ts"
+  ]
+}
