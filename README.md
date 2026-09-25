@@ -203,6 +203,45 @@ Funciones actuales:
 
 La definicion estructural queda en `kinematicGraph`; la pose de prueba queda separada en `kinematicState`. Esto evita acumular errores y permite guardar/recuperar el mecanismo sin convertir la geometria original en un asset destructivo.
 
+#### Advanced Mechanical Rig
+
+El modo `Advanced` lleva el authoring mecanico al viewport y organiza las herramientas en cuatro vistas compactas. Adapta al dominio industrial los principios de rigging profesional de Blender: cadena jerarquica, controles visibles, coordenadas locales, limites, pose de reposo y animacion por keyframes. La geometria no se convierte en un esqueleto deformable: `KinematicGraph V2` sigue siendo la fuente de verdad y cada pieza permanece rigida e intacta.
+
+![Advanced Mechanical Rig ejecutado sobre un robot de la celda](docs/readme-assets/advanced-rig-workspace.png)
+
+- `Rig`: inspecciona la cadena parent/joint/child y crea controles 3D persistentes. Un joint revolute usa un aro, uno prismatico una flecha y uno fixed un marcador.
+- `Pose`: mueve cada joint dentro de sus limites, vuelve a `Home`, muestra su frame local y registra la pose completa o un joint.
+- `Constraints`: edita tipo, eje, pivot, limites, velocidad, damping, friction y coupling/mimic; tambien ejecuta el diagnostico estructural.
+- `Animation`: crea acciones reutilizables, controla FPS, interpolacion, auto-key, duracion, loop, timeline y keyframes por joint.
+
+El flujo de uso es:
+
+```text
+Importar robot -> Mechanical -> Advanced -> Rig
+  -> revisar jerarquia y controles
+  -> Pose / Constraints para calibrar
+  -> Animation para registrar la secuencia
+  -> Save Rig -> refrescar -> continuar desde la misma definicion
+```
+
+Tutorial detallado:
+
+1. Importa el robot completo y selecciona su objeto raiz en `Scene`. Antes de editar, comprueba que todas las piezas se ven y que el encuadre es correcto.
+2. Abre `Mechanical`, activa `Advanced` y entra en `Rig`. Recorre la jerarquia desde la base; cada fila muestra la pieza, el joint de entrada, su tipo y su eje dominante.
+3. Selecciona un joint y pulsa su control para localizarlo en el viewport. Rojo representa X, verde Y, azul Z y amarillo el eje mecanico activo.
+4. Abre `Constraints` y pulsa `Show`. El pivot debe coincidir con el centro real de la bisagra, eje o rail. Si no coincide, usa `Pick pivot` sobre la geometria.
+5. Si la orientacion es incorrecta, usa `Edit axis`. Un joint `Revolute` gira exclusivamente alrededor del eje; un `Prismatic` se desplaza exclusivamente sobre el eje; `Fixed` no admite movimiento.
+6. Introduce `Lower`, `Upper` y `Velocity`. Las rotaciones usan radianes y las traslaciones unidades del modelo. Prueba primero intervalos pequenos para evitar atravesar otras piezas.
+7. Configura `Damping` y `Friction` cuando necesites una respuesta mecanica mas controlada. Para una pinza, selecciona el joint conductor en `Mimic driver`; usa un multiplicador negativo para movimiento opuesto.
+8. Abre `Pose`, mueve un joint cada vez y observa toda su cadena descendente. Pulsa `Home` despues de cada grupo de pruebas para confirmar que la pose original se recupera sin drift.
+9. Abre `Animation`, crea una `Action`, configura FPS, duracion e interpolacion. Situa el cursor temporal, prepara la pose y pulsa `Key Pose`. Repite el proceso para construir la secuencia.
+10. Reproduce la accion completa, corrige limites o keyframes y revisa los diagnosticos. Solo guarda cuando no queden errores estructurales.
+11. Pulsa `Save Rig`, refresca la aplicacion, vuelve a seleccionar el robot y reproduce la misma accion. La jerarquia, controles, constraints y keyframes deben mantenerse.
+
+La misma guia esta disponible dentro del dashboard mediante `Help`, en la cabecera de `Advanced Rig & Animation`. Se abre como una nota superpuesta y sus botones llevan directamente a `Rig`, `Constraints`, `Pose` o `Animation` sin reducir permanentemente el escenario 3D.
+
+La implementacion incorpora una mejora especifica frente a un rig visual generico: los controles conocen la semantica mecanica del joint, sus limites fisicos, su coupling y sus diagnosticos. Los keyframes solo cambian `kinematicState`; nunca reparentan, sustituyen ni deforman la geometria fuente.
+
 ### 9. Calibracion De Piezas Desmontadas
 
 Una pieza desmontada no hereda los movimientos del modelo completo. Al abrir `Analyze piece`, la plataforma crea una definicion limpia y realiza este flujo antes de permitir que se guarde como componente funcional:
@@ -411,6 +450,8 @@ La version de escritorio requiere tener instalado Rust/Tauri. El flujo en navega
 
 La plataforma V2 incorpora un escenario de gemelo digital para comprobar comunicacion entre una entidad fisica simulada y el robot 3D. El boton esta en la barra superior, junto a `Cell Cycle`, `Inspect All` e `Inspect Pending`, con el nombre `Digital Twin Scenario`.
 
+El mando visual ya no necesita iniciarse manualmente desde otra terminal durante el desarrollo. El boton `IoT Control Center`, situado inmediatamente antes de `Digital Twin Scenario`, inicia o reutiliza el servicio local equivalente a `npm.cmd run modbus:controller`. El centro aparece en un panel global superpuesto desde el borde derecho, accesible en Workspace, Warehouse y Digital Twin Scenario. La flecha lateral lo oculta sin desmontarlo: las sesiones BLE, dispositivos conectados y publicaciones de registros permanecen activas mientras el escenario recupera todo el espacio. El panel es responsive y usa el mismo dashboard servido en `http://127.0.0.1:8765`, con presentación transparente para la integración.
+
 Arquitectura usada en esta fase:
 
 ```text
@@ -418,6 +459,391 @@ Mando visual / BLE IoT -> registros Modbus HR -> Digital Twin Scenario -> kinema
 ```
 
 El escenario mantiene dos vistas: la entidad fisica simulada publica registros y el gemelo digital aplica esos datos al modelo 3D seleccionado. La comunicacion usa un bridge HTTP local que expone paquetes y registros equivalentes a un flujo Modbus de prueba.
+
+### PLC Virtual Industrial Integrado
+
+La `Entidad Fisica Simulada` ya no es solamente un grupo de sliders. Incluye un runtime PLC con ejecucion ciclica e imagen de proceso:
+
+- CPU con modos `STOP`, `RUN` y `FAULT`;
+- programa secuencial `IDLE`, `HOMING`, `AUTO` o `FAULT`;
+- scan configurable entre 5 y 500 ms, contador de ciclos y metricas last/average/maximum;
+- watchdog de ciclo;
+- entradas digitales para E-Stop, puerta de seguridad, servo ready y selector AUTO/MANUAL;
+- salidas digitales para motor enable, ciclo activo, solicitud Home y lampara de fallo;
+- enclavamiento de marcha y parada;
+- alarmas persistentes con reset condicionado;
+- arbitraje de autoridad entre PLC interno y controller Modbus externo.
+
+Secuencia segura de operacion:
+
+1. Verificar `E-STOP READY`, `GUARD CLOSED` y `SERVO READY`.
+2. Seleccionar `AUTO` para ciclo automatico o `MANUAL` para homing/configuracion.
+3. Si existe un controller externo activo, pulsar `Disconnect Client`; nunca se permiten dos maestros de escritura simultaneos.
+4. Pulsar `Run`. La CPU pasa de `STOP/IDLE` a `RUN/AUTO` y habilita `Q0.0 Motor enable`.
+5. Los valores del proceso se codifican en registros HR, se transmiten como frames Modbus TCP y se decodifican en el gemelo.
+6. Abrir una puerta, quitar `Servo Ready` o disparar E-Stop fuerza `FAULT`, elimina motor enable y detiene el movimiento.
+7. El reset se rechaza mientras el circuito de seguridad siga abierto. Restaurar primero las entradas y despues pulsar `RESET FAULT`.
+8. Tras el reset la CPU queda en `STOP`; es necesario pulsar `Run` de nuevo.
+
+Este runtime reproduce semantica y diagnostico PLC para simulacion, integracion y formacion. No es un PLC de seguridad certificado, no ofrece tiempo real duro y no debe controlar directamente actuadores fisicos peligrosos. Una maquina real necesita PLC, safety PLC, drives, cableado y evaluacion de riesgos certificados.
+
+### Conexion Alternativa A OpenPLC
+
+El dashboard puede ceder la autoridad del robot a OpenPLC Runtime v4 mediante Modbus TCP real. OpenPLC Editor, OpenPLC Runtime y 3D Asset Forge son procesos diferentes: conectar el Editor a la API del Runtime no implica que el PLC este ejecutando un programa ni que Modbus este disponible.
+
+#### Esquema completo PLC - gemelo digital
+
+La integracion activa separa claramente ingenieria, control, transporte y representacion. OpenPLC ejecuta el programa ciclico; Modbus TCP transporta palabras de 16 bits; el gateway local valida y decodifica el protocolo; `KinematicGraph V2` aplica el estado sin reconstruir ni modificar la geometria fuente.
+
+```mermaid
+flowchart LR
+  subgraph ENG[Estacion de ingenieria]
+    EDITOR[OpenPLC Editor v4<br/>Programa IEC 61131-3 ST]
+  end
+
+  subgraph CONTROL[Control industrial local]
+    RUNTIME[OpenPLC Runtime v4<br/>TASK0 ciclica]
+    IMAGE[Imagen de proceso<br/>QW90..QW105]
+    SLAVE[Modbus TCP Slave<br/>127.0.0.1:502<br/>Unit ID 1]
+    RUNTIME --> IMAGE --> SLAVE
+  end
+
+  subgraph PLATFORM[3D Asset Forge V2]
+    GATEWAY[Gateway Modbus<br/>FC03 / FC06 / FC16]
+    DECODER[Decoder<br/>INT16 / 10000 = rad]
+    STATE[kinematicState<br/>J1..J6]
+    GRAPH[KinematicGraph V2<br/>ejes, pivots y limites]
+    VIEW[Three.js viewport<br/>cobot-6dof.glb]
+    GATEWAY --> DECODER --> STATE
+    GRAPH --> VIEW
+    STATE --> VIEW
+  end
+
+  EDITOR -->|HTTPS 8443<br/>build y upload| RUNTIME
+  SLAVE -->|FC03 lectura ciclica| GATEWAY
+  GATEWAY -->|FC06 comando<br/>FC16 consignas| SLAVE
+```
+
+Topologia de red local:
+
+```text
+OpenPLC Editor
+  127.0.0.1:8443 HTTPS
+          |
+          v
+OpenPLC Runtime [RUNNING]
+  TASK0 -> programa ST -> process image %QW
+  Modbus Slave 127.0.0.1:502 / Unit 1
+          |
+          | Modbus TCP ADU: MBAP + PDU
+          | FC03 read holding registers
+          | FC06 write single register
+          | FC16 write multiple registers
+          v
+Vite/OpenPLC gateway 127.0.0.1:5187
+  validacion -> INT16 firmado -> radianes
+          |
+          v
+React state -> kinematicState -> KinematicGraph V2 -> Three.js robot
+```
+
+Flujo temporal de una orden de marcha:
+
+```mermaid
+sequenceDiagram
+  participant UI as Digital Twin Scenario
+  participant GW as Gateway 3D Asset Forge
+  participant MB as OpenPLC Modbus Slave
+  participant PLC as Programa ST / TASK0
+  participant KG as KinematicGraph V2
+  participant VP as Viewport Three.js
+
+  UI->>GW: RUN (Command=1)
+  GW->>MB: FC06, wire 90, value 1
+  MB->>PLC: Actualiza %QW90
+  loop Cada scan PLC
+    PLC->>PLC: Calcula Step, tiempo y J1..J6
+    PLC->>MB: Publica %QW91..%QW105
+  end
+  loop Poll configurado, 250 ms
+    GW->>MB: FC03, wire 100, 6 HR
+    MB-->>GW: 6 words J1..J6
+    GW-->>UI: INT16 rad x10000
+    UI->>KG: Actualiza kinematicState
+    KG->>VP: Aplica pose sobre la jerarquia
+  end
+```
+
+Mapa de senales y conversion:
+
+| Senal | Variable OpenPLC | Wire Modbus | Referencia humana | Sentido | Codificacion |
+| --- | --- | ---: | ---: | --- | --- |
+| Command | `%QW90` | 90 | HR40091 | Plataforma -> PLC | `0 STOP`, `1 RUN`, `2 HOME` |
+| Status | `%QW91` | 91 | HR40092 | PLC -> plataforma | `0 STOP`, `1 RUN`, `2 HOME` |
+| ActiveStep | `%QW92` | 92 | HR40093 | PLC -> plataforma | Paso `0..6` |
+| ElapsedMs | `%QW93` | 93 | HR40094 | PLC -> plataforma | Milisegundos del ciclo |
+| J1..J6 | `%QW100..105` | 100..105 | HR40101..40106 | PLC -> gemelo | `INT16`, radianes x 10000 |
+
+El bloque `Robot mode` del dashboard escribe `%QW90` y es reutilizable para cualquier robot que implemente este perfil:
+
+- `Manual` (`Command=0`): detiene el secuenciador y conserva las consignas J1..J6 escritas manualmente.
+- `Auto` (`Command=1`): ejecuta continuamente la secuencia definida por el PLC.
+- `Home` (`Command=2`): aplica y mantiene la pose Home hasta seleccionar otro modo.
+
+Los botones envian una escritura Modbus FC06 real. En Manual, los controles de articulacion escriben `%QW100..105`; el programa ST relee esos words antes de publicarlos para no sobrescribir la orden del operador en el siguiente scan.
+
+Para cada articulacion, OpenPLC calcula y publica:
+
+```text
+raw = INT(degrees * PI / 180 * 10000)
+radians = INT16(raw) / 10000
+```
+
+El cast a `INT16` es obligatorio: por ejemplo, el word Modbus `59427` representa `-6109`, por tanto `-0.6109 rad`, aproximadamente `-35 grados`. Sin esta conversion a complemento a dos, las articulaciones negativas se interpretarian como giros positivos muy grandes.
+
+Estado realmente implementado:
+
+| Elemento | Estado | Evidencia |
+| --- | --- | --- |
+| Programa PLC IEC 61131-3 | Activo | PLC `RUNNING`, `TASK0` ejecutada por OpenPLC Runtime |
+| Transporte Modbus TCP | Activo | Slave escuchando en `127.0.0.1:502`, Unit ID `1` |
+| Lectura de telemetria | Activa | FC03 sobre wire `90..105` y `100..105` |
+| Escritura de comandos | Activa | FC06 sobre wire `90`; FC16 disponible para bloques |
+| Gateway de plataforma | Activo | `127.0.0.1:5187`, deteccion automatica del perfil cobot |
+| Gemelo 3D | Activo | J1..J6 se aplican a `kinematicState` y al modelo Three.js |
+| Brazo fisico industrial | No conectado | Requiere PLC/hardware, drives, robot y realimentacion de posicion reales |
+
+En la configuracion actual, la parte fisica es el controlador OpenPLC ejecutando un programa industrial y publicando su imagen de proceso. El robot mostrado a la izquierda puede actuar como entidad fisica simulada, pero no debe confundirse con telemetria de un brazo fisico real. Para cerrar ese ultimo nivel sera necesario mapear feedback real del robot o sus drives hacia registros de entrada y definir watchdog, calidad, timestamp, modo seguro y autoridad de mando.
+
+```text
+OpenPLC Editor
+  -> HTTPS API 127.0.0.1:8443 (build y upload)
+  -> OpenPLC Runtime v4 (estado EMPTY / RUNNING)
+  -> Modbus TCP FC03 / FC16
+  -> gateway local 3D Asset Forge
+  -> decoder INT16 firmado / 10000
+  -> kinematicState
+  -> robot 3D
+```
+
+El programa que reproduce el clip `Ciclo_Asistencia` de `Start Smart Demo` para `cobot-6dof.glb` esta en [`openplc/cobot-6dof-smart-demo/cobot_6dof_smart_demo.st`](openplc/cobot-6dof-smart-demo/cobot_6dof_smart_demo.st). El archivo tiene el formato POU admitido por OpenPLC Editor: bloque de declaraciones `VAR...END_VAR` seguido del cuerpo Structured Text. No deben anadirse wrappers `PROGRAM`, `FUNCTION` o `CONFIGURATION` al pegarlo en los dos paneles del Editor.
+
+La variante [`cobot_6dof_smart_demo_amplified.st`](openplc/cobot-6dof-smart-demo/cobot_6dof_smart_demo_amplified.st) amplía el recorrido de J1-J6 mediante seis transiciones coordinadas y suavizado cubico. Mantiene exactamente el mismo mapa Modbus, por lo que puede sustituir el cuerpo del programa sin cambiar la configuracion de 3D Asset Forge.
+
+#### Escenario IoT: robot adaptativo por condicion
+
+El escenario industrial usa un TI CC2650 SensorTag fijado rigidamente a la muneca. El giroscopio observa movimiento angular anormal o impactos; temperatura y humedad aportan contexto ambiental para proteger proceso, herramienta y electronica. Esta combinacion sigue el principio de monitorizacion multivariable: la vibracion no se interpreta aislada de las condiciones operativas. La norma ISO 13373-1 describe adquisicion, ubicacion del transductor, condiciones de operacion, monitorizacion continua y parametros complementarios como temperatura; el SensorTag integra movimiento MPU9250 y humedad HDC1000 con notificaciones BLE configurables ([ISO 13373-1](https://www.iso.org/standard/21831.html), [TI CC2650 SensorTag](https://www.ti.com/tool/TIDC-CC2650STK-SENSORTAG)).
+
+```mermaid
+flowchart LR
+  TAG[CC2650 en muneca<br/>HDC1000 + MPU9250] -->|BLE GATT<br/>temp, RH, gyro| CTRL[Modbus Controller<br/>Web Bluetooth]
+  CTRL -->|HTTP local<br/>telemetria + calidad| FORGE[3D Asset Forge<br/>IoT condition strip]
+  FORGE -->|Modbus TCP FC16<br/>QW120..124| PLC[OpenPLC Runtime<br/>Condition logic]
+  PLC --> DECIDE{Estado}
+  DECIDE -->|NORMAL| AUTO[Movimiento completo]
+  DECIDE -->|WARNING| DERATE[Movimiento 55%]
+  DECIDE -->|TRIP / STALE| HOME[Retorno seguro Home]
+  PLC -->|FC03 QW94..105| TWIN[Gemelo digital 3D]
+```
+
+```text
+Sensor fisico -> BLE -> timestamp/calidad -> Modbus inputs -> PLC
+PLC -> NORMAL/WARNING/TRIP/STALE -> J1..J6 -> gemelo 3D
+```
+
+Mapa del programa [`cobot_6dof_iot_condition_monitoring.st`](openplc/cobot-6dof-smart-demo/cobot_6dof_iot_condition_monitoring.st):
+
+| Wire | Senal | Escala | Uso PLC |
+| ---: | --- | --- | --- |
+| 120 | temperatura | C x100 signed | warning 45 C, trip 55 C |
+| 121 | humedad | %RH x100 | warning 75%, trip 85% |
+| 122 | magnitud gyro | grados/s x100 | warning 120, trip 220 grados/s |
+| 123 | edad | ms | stale por encima de 2500 ms |
+| 124 | validez | 0/1 | dato valido |
+| 125 | secuencia | contador UINT16 | detectar actualizacion y trazabilidad |
+| 126 | calidad/capacidades | bitfield | bit 0 valido, 1 fresco, 2 origen, 3 accel, 4 gyro, 5 ambiente, 6 magnetometro |
+| 127 | politica PLC | 0/1 | 0 condition monitor, 1 motion permit demo |
+
+La plataforma actua como gateway BLE/Modbus: recibe GATT, decodifica unidades, anade edad, secuencia, calidad y capacidades, y escribe `%QW120..126` como bloque de registros. OpenPLC es la autoridad de decision. Publica su reaccion en `%QW94..96` (`AlarmCode`, `ConditionState`, `SpeedPermille`) y las consignas articulares en `%QW100..105`; 3D Asset Forge lee ambas zonas y muestra tanto la decision como el movimiento resultante. Modbus define registros de 16 bits y FC03/FC16 para lectura/escritura de bloques, por lo que escalas, signedness y offset deben permanecer explicitos ([Modbus Application Protocol V1.1b3](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf)).
+
+Estados de reaccion visibles:
+
+| ConditionState | Reaccion PLC | Resultado |
+| ---: | --- | --- |
+| 0 | NORMAL | ciclo automatico completo |
+| 1 | WARNING / DERATE | recorrido reducido al 55% |
+| 2 | TRIP / HOLD | movimiento inhibido y retorno Home |
+| 3 | STALE / HOLD | dato ausente, invalido o antiguo; movimiento inhibido |
+
+`Motion permit demo` (`%QW127=1`) demuestra causalidad IoT: exige giroscopio disponible y actividad superior a `3 deg/s`; tras 2 segundos sin actividad genera alarma 5 y HOLD. Si el perfil no tiene giroscopio genera alarma 6. Es una demostracion de supervision, no una funcion de seguridad. Un paro de seguridad industrial requiere arquitectura, componentes y validacion de seguridad independientes; el SensorTag y Modbus TCP sin seguridad funcional no sustituyen ese sistema.
+
+Para que la reaccion exista realmente hay que cargar y ejecutar [`cobot_6dof_iot_condition_monitoring.st`](openplc/cobot-6dof-smart-demo/cobot_6dof_iot_condition_monitoring.st). Con `cobot_6dof_smart_demo.st` o la variante amplified, OpenPLC ignora `%QW120..127` y ejecuta solamente la secuencia automatica. El CC2650 expone Movement de nueve ejes y sensores ambientales; cada servicio GATT debe habilitarse por separado ([TI CC2650 SensorTag](https://www.ti.com/tool/CC2650STK), [tabla GATT oficial de TI](https://git.ti.com/cgit/sensortag-20-android/sensortag-20-android/tree/sensortag20/BleSensorTag/src/main/res/xml/gatt_uuid.xml?h=master)).
+
+Los umbrales no son limites universales ni certificados. Deben obtenerse de una baseline repetible en cada fase del ciclo, validar ruido, montaje y tasa de muestreo, y ajustarse a la documentacion del fabricante del robot. El SensorTag de desarrollo tampoco sustituye sensores industriales con grado de proteccion, seguridad funcional y calibracion trazable.
+
+La comparacion completa con ISO 23247, ISO 13373, OPC UA Robotics/Machinery, IEC 62443 y patrones de plataformas industriales esta en [Industrial Robot, PLC and IIoT Architecture Review](docs/INDUSTRIAL_ROBOT_PLC_IOT_RESEARCH.md). El contrato ampliado añade secuencia `%QW125`, calidad `%QW126`, identidad de muestra, timestamps de origen/recepcion y cadena local de procedencia.
+
+#### Proyecto OpenPLC Editor
+
+La configuracion minima del proyecto debe contener:
+
+```text
+Program POU: main
+Task:        task0
+Trigger:     Cyclic
+Interval:    T#20ms
+Priority:    1
+Instance:    instance0
+Binding:     instance0 -> task0 -> main
+Device:      OpenPLC Runtime v4
+IP Address:  127.0.0.1
+```
+
+El campo del Editor es `IP Address`, no una URL. Debe contener `127.0.0.1`, sin `https://` y sin puerto. El Editor v4 usa la API HTTPS oficial del Runtime en `8443`. Un asterisco en `* Configuration` significa que el cambio todavia no esta guardado. El archivo persistido `devices/configuration.json` debe indicar `"deviceBoard": "OpenPLC Runtime v4"`; si conserva `OpenPLC Simulator`, las acciones de transferencia al Runtime no quedan habilitadas.
+
+#### Runtime y Modbus Slave
+
+La instalacion Windows utilizada por el proyecto se encuentra normalmente en `%LOCALAPPDATA%\OpenPLC Runtime\openplc-runtime`. La primera linea de `plugins.conf` debe habilitar `modbus_slave` con el campo `enabled` a `1`. El archivo `core/src/drivers/plugins/python/modbus_slave/modbus_slave_config.json` usa esta configuracion local segura:
+
+```json
+{
+  "network_configuration": {
+    "host": "127.0.0.1",
+    "port": 502
+  },
+  "buffer_mapping": {
+    "holding_registers": {
+      "qw_count": 1024,
+      "mw_count": 0,
+      "md_count": 0,
+      "ml_count": 0
+    },
+    "coils": {
+      "qx_bits": 8192,
+      "mx_bits": 0
+    },
+    "discrete_inputs": {
+      "ix_bits": 8192
+    },
+    "input_registers": {
+      "iw_count": 1024
+    }
+  },
+  "word_order": "high_word_first"
+}
+```
+
+Los nombres son estrictos: esta version espera `network_configuration` y `buffer_mapping` en singular. Si se usan `host`/`port` en la raiz o `buffer_mappings` en plural, el plugin los ignora, muestra `network_configuration section missing or incomplete` y trata de enlazar su IP predeterminada. El bind se limita a `127.0.0.1`: el PLC de desarrollo no queda expuesto a la red. Para acceso remoto debe existir una decision explicita de red, autenticacion, segmentacion y firewall; no se debe sustituir `127.0.0.1` por `0.0.0.0` por comodidad.
+
+#### Mapa del cobot
+
+OpenPLC v3 expone `%QWn` como Holding Register wire `n`. OpenPLC Runtime v4 dirige los Holding Registers al buffer `int_output` desde `holding_registers_start_buffer`. Con inicio de buffer cero, el perfil del cobot es:
+
+| Direccion ST | Wire | Referencia 4xxxx | Tipo | Funcion |
+| --- | ---: | ---: | --- | --- |
+| `%QW90` | 90 | HR40091 | `UINT` | Command: `0 STOP`, `1 RUN`, `2 HOME` |
+| `%QW91` | 91 | HR40092 | `UINT` | Status |
+| `%QW92` | 92 | HR40093 | `UINT` | ActiveStep `0..6` |
+| `%QW93` | 93 | HR40094 | `UINT` | Tiempo de ciclo en ms |
+| `%QW100` | 100 | HR40101 | `INT16` | J1 radianes x10000 |
+| `%QW101` | 101 | HR40102 | `INT16` | J2 radianes x10000 |
+| `%QW102` | 102 | HR40103 | `INT16` | J3 radianes x10000 |
+| `%QW103` | 103 | HR40104 | `INT16` | J4 radianes x10000 |
+| `%QW104` | 104 | HR40105 | `INT16` | J5 radianes x10000 |
+| `%QW105` | 105 | HR40106 | `INT16` | J6 radianes x10000 |
+
+Los seis joints ocupan seis words consecutivos, no doce. Los valores negativos viajan en complemento a dos. El decoder convierte cada word a `INT16` y divide por `10000` para recuperar radianes. `%MW` no se usa: en OpenPLC v3 esa memoria comienza en otra zona Modbus, habitualmente a partir de wire `1024`.
+
+#### Centro de configuracion interno
+
+La rueda situada en la esquina inferior izquierda abre `Internal Configuration Center` desde cualquier vista de 3D Asset Forge. Este centro hace visible y editable el contrato que antes estaba implicito en el codigo:
+
+```text
+OpenPLC wire %QWn <-> Modbus Holding Register HR(40001 + n)
+```
+
+Cada definicion muestra en tiempo real:
+
+- estado habilitado;
+- wire OpenPLC y referencia HR convencional calculada;
+- semantica de la variable;
+- codificacion y numero de words;
+- sentido `Platform to PLC`, `PLC to platform` o `Read / write`;
+- robot y joint asociados;
+- ultimo valor procedente de OpenPLC o del PLC interno.
+
+El centro se abre siempre en modo `READ ONLY`. Ningun campo, selector, alta, borrado o restauracion puede utilizarse hasta pulsar `Enable editing`; el boton cambia a verde para indicar de forma inequívoca que se esta modificando un contrato sensible. Las modificaciones se realizan sobre un borrador y no afectan al PLC, al `TwinProject` ni a `localStorage` mientras no se confirmen.
+
+`Save changes` abre una confirmacion que describe el impacto: detener movimiento local, sustituir el mapa activo, reconstruir bindings y persistir la configuracion. Solo `Confirm and save` ejecuta estas operaciones. `Cancel changes`, cerrar el centro con cambios pendientes o intentar abandonar la edicion permite descartar el borrador y recuperar el ultimo mapa confirmado. No existe guardado automatico para este panel.
+
+Todos los joints permanecen visibles en el inventario. En una conexion OpenPLC, `Quantity` limita cuantos bindings de joint se consultan para conservar compatibilidad con programas que solo declaran J1..J6; los bindings se ordenan por wire. Para publicar joints adicionales se debe ampliar el bloque del programa ST y la cantidad de words configurada, o deshabilitar los joints que no exponga ese PLC.
+
+Las codificaciones disponibles son `UINT16`, `INT16`, `INT16 rad x10000` y `FLOAT32 BE`. `FLOAT32 BE` ocupa dos Holding Registers; el resto ocupa uno. El panel calcula el rango completo y marca en rojo cualquier solapamiento entre definiciones habilitadas.
+
+El mapa se guarda en `localStorage` con la clave `assetForge.internalRegisterConfiguration.v1`. Al modificar una direccion, codificacion o joint, la plataforma detiene el movimiento local, invalida el frame anterior y reconstruye los bindings `TwinProject`. No se mantiene un mapa visual paralelo: el simulador Modbus local, las lecturas OpenPLC, las escrituras manuales, `Command`, `SensorPolicy` y la publicacion IoT consultan esta configuracion.
+
+Flujo para asignar un registro nuevo a un joint:
+
+1. Seleccionar el robot en el Workspace para que el centro enumere todos los joints no fijos de su `KinematicGraph`.
+2. Abrir la rueda de configuracion y pulsar `Add register`.
+3. Pulsar `Enable editing` y comprobar que el boton cambia a verde.
+4. Definir `%QW`, semantica, codificacion y direccion de datos.
+5. Seleccionar el robot y el joint. Un joint nuevo pasa a formar parte del proyecto Modbus en el siguiente arranque o frame.
+6. Corregir cualquier `Address conflict`; el guardado queda bloqueado mientras exista un conflicto.
+7. Pulsar `Save changes`, revisar el aviso y elegir `Confirm and save`.
+8. Declarar el mismo `%QW` y tipo en el programa OpenPLC. La interfaz no puede crear memoria en un PLC fisico ni cambiar su programa ST automaticamente.
+9. Conectar OpenPLC y comprobar la columna `Current`, el contador RX y la auditoria Modbus.
+
+`Restore documented map` recupera las variables de sistema `%QW90..96` y de telemetria `%QW120..127`. Al volver a seleccionar un robot, sus joints se incorporan de nuevo a partir de `%QW100`. Las definiciones de sistema no se pueden borrar accidentalmente, pero pueden deshabilitarse.
+
+Importante: modificar un mapa mientras existe una maquina fisica conectada cambia el contrato de comunicaciones. Debe mantenerse el PLC en `STOP`, comprobar tipos, escalas, limites y ausencia de colisiones, actualizar el programa ST y validar primero contra el gemelo digital. Este editor configura la integracion y la simulacion; no sustituye las funciones de seguridad certificadas del robot o PLC.
+
+Configuracion de 3D Asset Forge:
+
+```text
+IP / host:       127.0.0.1
+Modbus TCP port: 502
+Unit ID:         1
+HR start (wire): 100
+Quantity:        6 words
+Polling:         250 ms
+Data:            INT16 rad x10000
+```
+
+#### Puesta en marcha
+
+1. Iniciar una sola instancia de `Start OpenPLC Runtime` y mantener su consola abierta.
+2. Esperar `Running on https://127.0.0.1:8443`. El estado inicial `EMPTY` es normal si aun no existe un programa cargado.
+3. Abrir el proyecto en OpenPLC Editor, seleccionar `OpenPLC Runtime v4`, escribir `127.0.0.1`, guardar y pulsar `Connect`.
+4. Ejecutar `Clean build and upload`. Un upload correcto genera `build/libplc_*.so` en el Runtime.
+5. Pulsar `Run` y comprobar que el Runtime cambia de `EMPTY` a `RUNNING`. El plugin Modbus se inicia despues de cargar el programa; antes de ese momento `502` permanece cerrado.
+6. Verificar en PowerShell:
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 8443
+Test-NetConnection 127.0.0.1 -Port 502
+```
+
+7. En 3D Asset Forge, seleccionar el cobot, abrir `Digital Twin Scenario` y pulsar `Auto Detect Map`.
+8. La deteccion prueba puertos `502/5020`, Unit ID configurado/`1`/`0` y valida la firma `%QW90..%QW105`. Debe mostrar `Detected %QW90..105` y los words `RAW [...]`.
+9. Pulsar `Connect OpenPLC`. El indicador cambia a `ONLINE` y `RX` aumenta. FC03 actualiza el gemelo; una escritura manual usa FC06 o FC16 hacia OpenPLC.
+10. Pulsar `Disconnect OpenPLC` para devolver la autoridad al PLC virtual interno.
+
+#### Diagnostico
+
+| Sintoma | Causa probable | Comprobacion / correccion |
+| --- | --- | --- |
+| `Connection failed` en Editor | Runtime detenido, IP escrita como URL o configuracion sin guardar | Iniciar Runtime; usar solo `127.0.0.1`; comprobar que desaparece `* Configuration` |
+| No se puede compilar/transferir | Proyecto guardado como `OpenPLC Simulator` | Seleccionar y guardar `OpenPLC Runtime v4`; revisar `devices/configuration.json` |
+| Runtime muestra `EMPTY` | No existe `libplc_*.so` | Ejecutar `Clean build and upload` y despues `Run` |
+| `ECONNREFUSED 127.0.0.1:502` | Modbus no ha arrancado o el bind ha fallado | Confirmar PLC `RUNNING`; buscar `Modbus slave plugin listening on 127.0.0.1:502`; verificar `network_configuration`, `buffer_mapping` y `plugins.conf` |
+| `network_configuration section missing or incomplete` | JSON con esquema antiguo o claves en la raiz | Usar exactamente `network_configuration.host`, `network_configuration.port` y `buffer_mapping` en singular; reiniciar el Runtime |
+| `Failed to start server on <IP>:502` | IP no asignada al equipo o puerto ocupado | Corregir el host a `127.0.0.1`, cerrar la otra instancia si existe y reiniciar el Runtime |
+| Excepcion Modbus 2 | Holding Register no mapeado | Ejecutar `Auto Detect Map`; revisar `%QW100..105` y buffer start |
+| `RX` no aumenta | Endpoint, Unit ID o autoridad incorrectos | Revisar `127.0.0.1:502`, Unit `1` y desconectar otros controladores |
+| `Address already in use` en `8443` | Otra instancia del Runtime sigue abierta | Cerrar todas las consolas Runtime y arrancar una sola instancia |
+
+OpenPLC Runtime v3 esta fuera de mantenimiento. La integracion objetivo es Runtime v4 y se basa en operaciones Modbus TCP estandar FC03, FC06 y FC16. Consulte la [documentacion oficial del driver Modbus de OpenPLC Runtime](https://github.com/Autonomy-Logic/openplc-runtime/blob/main/core/src/drivers/README.md).
 
 Para lanzar el mando visual en Windows PowerShell:
 
@@ -449,6 +875,7 @@ Flujo de uso:
 5. En la plataforma, pulsar `Visual Controller` para recibir los registros externos.
 6. Usar `Advanced Details` para ver HR, words hex, paquetes y estado de cliente.
 7. Usar `Disconnect Client` desde la plataforma para cortar el cliente conectado.
+8. Para reconectar despues de un corte solicitado por la plataforma, pulsar `Connect` en el mando visual. Ese intento manual elimina el bloqueo de la sesion, 3D Asset Forge vuelve a detectar el mismo Session ID y reactiva RX automaticamente. No es necesario reiniciar ninguno de los dos procesos.
 
 Mapa HR principal:
 
@@ -462,6 +889,10 @@ HR 40111 / J6  giro rotatorio de herramienta
 ```
 
 El mando visual permite mover los registros con sliders, teclado, gamepad navegador o dispositivos BLE Texas Instruments. Soporta CC2650 SensorTag Movement, CC2541 SensorTag Accelerometer y CC2541 Keyfob Accelerometer.
+
+En CC2650, el panel mantiene las coordenadas `X/Y/Z` del acelerometro usadas por el control del robot y muestra, sin sustituirlas, `GX/GY/GZ` del giroscopio, `MX/MY/MZ` del magnetometro, temperatura y humedad. La magnitud del giroscopio continua publicada en `%QW122` para conservar el contrato PLC existente; los vectores completos viajan en la telemetria trazable del dashboard.
+
+La disponibilidad se transmite por canal. Un valor `0` solo se muestra si procede de una muestra real; sin muestras aparece `--`, y un perfil que no incorpora ese sensor indica `not available`. El CC2541 Keyfob ofrece acelerometro, mientras que el conjunto de movimiento y ambiente completo depende del perfil fisico del SensorTag conectado.
 
 Uso BLE multi-dispositivo:
 

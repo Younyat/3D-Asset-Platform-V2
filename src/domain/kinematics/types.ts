@@ -192,6 +192,7 @@ export type KinematicLogicalControl = {
 export type KinematicMotionKeyframe = {
   time: number;
   label?: string;
+  interpolation?: 'smooth' | 'linear' | 'step';
   jointValues: Record<string, number>;
 };
 
@@ -205,12 +206,31 @@ export type KinematicMotionClip = {
   keyframes: KinematicMotionKeyframe[];
 };
 
+export type KinematicRigControl = {
+  id: string;
+  name: string;
+  jointId: string;
+  shape: 'ring' | 'axis' | 'slider' | 'sphere';
+  color: string;
+  size: number;
+  visible: boolean;
+};
+
+export type KinematicAnimationSettings = {
+  fps: number;
+  autoKey: boolean;
+  interpolation: 'smooth' | 'linear' | 'step';
+  activeClipId?: string;
+};
+
 export type KinematicGraph = {
   parts: MechanicalPart[];
   joints: KinematicJoint[];
   rootPartId: string;
   logicalControls?: KinematicLogicalControl[];
   motionClips?: KinematicMotionClip[];
+  rigControls?: KinematicRigControl[];
+  animationSettings?: KinematicAnimationSettings;
   mechanicalAdjacency?: MechanicalAdjacency[];
   analysisVersion?: string;
 };

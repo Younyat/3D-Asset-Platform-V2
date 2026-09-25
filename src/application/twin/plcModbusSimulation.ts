@@ -123,7 +123,8 @@ export const createPlcTwinProjectForNode = (node: SceneNode, options: { timestam
   };
   const base = createTwinProjectFromAssetDocument(projectDocument, { mode: 'live', timestampUtc: options.timestampUtc ?? new Date().toISOString() });
   const connectionId = options.connectionId ?? 'sim-plc01';
-  const signals = actualJointSignals(base);
+  const movableJointIds = new Set(graph.joints.filter((joint) => joint.type !== 'fixed').map((joint) => joint.id));
+  const signals = actualJointSignals(base).filter((signal) => movableJointIds.has(String(signal.metadata.jointId)));
   const bindings: TwinBinding[] = signals.map((signal, index) => ({
     id: `modbus_${signal.id}`,
     signalId: signal.id,
@@ -193,7 +194,9 @@ export const runPlcModbusSimulationFrame = (
       options.registerOverrides?.[jointId] ??
       options.registerOverrides?.[binding.mapping.displayAddress ?? ''];
     const value = overrideValue ?? physicalValues[jointId] ?? state.homeJointValues[jointId] ?? 0;
-    const write = encodeModbusValue(value, binding.mapping);
+    const configuredEncoding = String(binding.metadata.encoding ?? '');
+    const encodedValue = configuredEncoding === 'int16-rad-x10000' ? value * 10000 : value;
+    const write = encodeModbusValue(encodedValue, binding.mapping);
     return {
       address: binding.mapping.address,
       displayAddress: binding.mapping.displayAddress ?? String(40001 + binding.mapping.address),
@@ -243,7 +246,12 @@ export const runPlcModbusSimulationFrame = (
       hex: modbusTcpHex(transactionId, unitId, [0x03, registers.length * 2, ...registers.flatMap((word) => [(word >> 8) & 0xff, word & 0xff])]),
       decoded: `${registers.length} registers: ${wordsToHex(registers)}`,
     });
-    return decodeModbusBlockSamples(block, registers, bindings, options.sequence, timestamp(options.nowMs), timestamp(options.nowMs));
+    return decodeModbusBlockSamples(block, registers, bindings, options.sequence, timestamp(options.nowMs), timestamp(options.nowMs)).map((sample) => {
+      const binding = bindings.find((item) => item.id === sample.bindingId);
+      return String(binding?.metadata.encoding ?? '') === 'int16-rad-x10000' && typeof sample.value === 'number'
+        ? { ...sample, value: sample.value / 10000 }
+        : sample;
+    });
   });
   const applied = applyDataBusSamples(project, rawSamples, { sequence: options.sequence, emittedAtUtc: timestamp(options.nowMs), deadband: { absolute: 0, heartbeatMs: 0 } });
   const jointValues = Object.fromEntries(

@@ -108,14 +108,15 @@ try {
     await page.waitForFunction(
       (expectedPort) =>
         document.body.innerText.includes('Modbus Controller Endpoint') &&
-        document.body.innerText.includes('RX no') &&
+        document.body.innerText.includes('RX yes') &&
+        document.body.innerText.includes('server online') &&
+        document.body.innerText.includes('client connected') &&
         document.body.innerText.includes('Disconnect Client') &&
         document.body.innerText.includes(String(expectedPort)),
       bridgePort,
       { timeout: 30000 },
     );
     await page.getByRole('button', { name: /Advanced Details/ }).click();
-    await page.getByRole('button', { name: /Visual Controller/ }).click();
     await page.waitForFunction(() => document.body.innerText.includes('Visual Modbus controller online'), undefined, { timeout: 30000 });
     await page.waitForFunction(
       (expectedPort) =>
@@ -151,9 +152,27 @@ try {
       { timeout: 30000 },
     );
 
+    await fetch(`http://127.0.0.1:${bridgePort}/client-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'regression-visual-controller', status: 'connected', endpoint: `http://127.0.0.1:${bridgePort}`, manualConnect: true }),
+    });
+    await page.waitForFunction(
+      () =>
+        document.body.innerText.includes('RX yes') &&
+        document.body.innerText.includes('client connected') &&
+        document.body.innerText.includes('controller online'),
+      undefined,
+      { timeout: 30000 },
+    );
+    const reconnectedHealth = await fetch(`http://127.0.0.1:${bridgePort}/health`).then((response) => response.json());
+    if (!reconnectedHealth.connectedClients?.some((client) => client.id === 'regression-visual-controller')) {
+      throw new Error(`Manually reconnected controller was not accepted: ${JSON.stringify(reconnectedHealth)}`);
+    }
+
     const errors = logs.filter((line) => line.startsWith('error') || line.startsWith('pageerror'));
     if (errors.length) throw new Error(`Terminal bridge browser errors:\n${errors.join('\n')}`);
-    console.log(`Visual Modbus controller regression passed: digital twin changed ${changed} canvas samples.`);
+    console.log(`Visual Modbus controller regression passed: digital twin changed ${changed} canvas samples and reconnect resumed RX.`);
     await context.close();
   } finally {
     await browser.close();

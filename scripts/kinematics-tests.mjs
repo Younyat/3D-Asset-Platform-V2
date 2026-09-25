@@ -15,11 +15,13 @@ const rigTestModule = path.resolve('.tmp/kinematics-tests/application/kinematics
 const robotControllerTestModule = path.resolve('.tmp/kinematics-tests/application/kinematics/robotMotionController.test.js');
 const robotAnalysisTestModule = path.resolve('.tmp/kinematics-tests/application/kinematics/robotMotionAnalysis.test.js');
 const robotCursorGuidanceTestModule = path.resolve('.tmp/kinematics-tests/application/kinematics/robotCursorGuidance.test.js');
+const advancedRigTestModule = path.resolve('.tmp/kinematics-tests/application/kinematics/advancedRig.test.js');
 const { runKinematicAuthoringTests } = await import(pathToFileURL(testModule).href);
 const { runProfessionalRobotRigTests } = await import(pathToFileURL(rigTestModule).href);
 const { runRobotMotionControllerTests } = await import(pathToFileURL(robotControllerTestModule).href);
 const { runRobotMotionAnalysisTests } = await import(pathToFileURL(robotAnalysisTestModule).href);
 const { runRobotCursorGuidanceTests } = await import(pathToFileURL(robotCursorGuidanceTestModule).href);
+await import(pathToFileURL(advancedRigTestModule).href);
 
 runKinematicAuthoringTests();
 runProfessionalRobotRigTests();

@@ -19,6 +19,7 @@ const testModule = path.resolve('.tmp/twin-tests/application/twin/twinFoundation
 const { runTwinFoundationTests } = await import(pathToFileURL(testModule).href);
 const runtimeTestModule = path.resolve('.tmp/twin-tests/application/twin/twinRuntime.test.js');
 const { runTwinRuntimeTests } = await import(pathToFileURL(runtimeTestModule).href);
+await import(pathToFileURL(path.resolve('.tmp/twin-tests/application/twin/virtualPlcRuntime.test.js')).href);
 const { createTwinProjectFromAssetDocument, validateTwinProject } = await import(pathToFileURL(path.resolve('.tmp/twin-tests/application/twin/twinFoundation.js')).href);
 const { createIndustrialSceneModelNode } = await import(pathToFileURL(path.resolve('.tmp/twin-tests/application/industrialScene/industrialScenePack.js')).href);
 

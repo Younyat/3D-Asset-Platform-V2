@@ -364,7 +364,9 @@ export const sampleKinematicMotionClip = (clip: KinematicMotionClip, elapsedSeco
   const previous = sorted[Math.max(0, nextIndex - 1)];
   const next = sorted[nextIndex];
   const span = Math.max(next.time - previous.time, 0.001);
-  const t = smoothstep((time - previous.time) / span);
+  const normalizedTime = (time - previous.time) / span;
+  const interpolation = previous.interpolation ?? 'smooth';
+  const t = interpolation === 'step' ? 0 : interpolation === 'linear' ? normalizedTime : smoothstep(normalizedTime);
   const jointIds = new Set([...Object.keys(previous.jointValues), ...Object.keys(next.jointValues)]);
   return Object.fromEntries(
     [...jointIds].map((jointId) => {

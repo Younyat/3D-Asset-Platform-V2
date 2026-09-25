@@ -1639,10 +1639,69 @@ export const ThreeViewport = ({
       return vectorTuple(sourcePointFromWorld(nodeId, center));
     };
 
+    const persistentRigSignature = () => {
+      const current = documentRef.current;
+      const node = current.nodes.find((item) => item.id === current.selectedNodeId);
+      if (!node || !('kinematicGraph' in node.geometry) || !node.geometry.kinematicGraph?.rigControls?.length) return '';
+      return JSON.stringify({
+        nodeId: node.id,
+        transform: node.transform,
+        controls: node.geometry.kinematicGraph.rigControls,
+        joints: node.geometry.kinematicGraph.joints.map((joint) => [joint.id, joint.origin.position, joint.axis, joint.type]),
+      });
+    };
+
+    const renderPersistentRigControls = () => {
+      const current = documentRef.current;
+      const node = current.nodes.find((item) => item.id === current.selectedNodeId);
+      if (!node || !('kinematicGraph' in node.geometry) || !node.geometry.kinematicGraph) return;
+      const graph = node.geometry.kinematicGraph;
+      const nodeObject = findNodeObject(node.id);
+      const bounds = new THREE.Box3();
+      if (nodeObject) bounds.setFromObject(nodeObject);
+      const size = new THREE.Vector3();
+      bounds.getSize(size);
+      const baseSize = clamp(Math.max(size.x, size.y, size.z, 0.1) * 0.06, 0.05, 0.35);
+      graph.rigControls?.filter((control) => control.visible).forEach((control) => {
+        const joint = graph.joints.find((item) => item.id === control.jointId);
+        if (!joint) return;
+        const origin = sourcePointToWorld(node.id, joint.origin.position);
+        const axis = sourceDirectionToWorld(node.id, joint.axis);
+        const controlSize = baseSize * clamp(control.size, 0.1, 10);
+        if (control.shape === 'ring') {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(controlSize, Math.max(controlSize * 0.045, 0.006), 8, 48),
+            new THREE.MeshBasicMaterial({ color: control.color, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9 }),
+          );
+          ring.position.copy(origin);
+          ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+          ring.renderOrder = 16;
+          ring.userData.rigControlId = control.id;
+          kinematicHelperGroup.add(ring);
+          return;
+        }
+        if (control.shape === 'slider' || control.shape === 'axis') {
+          const arrow = addArrow(origin.clone().add(axis.clone().multiplyScalar(-controlSize)), axis, control.color, controlSize * 2);
+          arrow.userData.rigControlId = control.id;
+          return;
+        }
+        const marker = addMarker(origin, control.color, controlSize * 0.34);
+        marker.userData.rigControlId = control.id;
+      });
+    };
+
     const syncKinematicHelpers = () => {
-      clearKinematicHelpers();
       const target = kinematicEditTargetRef.current;
-      if (!target) return;
+      if (!target) {
+        const signature = persistentRigSignature();
+        if (signature === renderer.domElement.dataset.rigControlSignature) return;
+        clearKinematicHelpers();
+        renderer.domElement.dataset.rigControlSignature = signature;
+        if (signature) renderPersistentRigControls();
+        return;
+      }
+      renderer.domElement.dataset.rigControlSignature = '';
+      clearKinematicHelpers();
       const frame = kinematicWorldFrame(target);
       addObjectHighlights(target.nodeId, target.affectedObjectNames, '#7dd3fc');
       addObjectHighlights(target.nodeId, target.parentObjectNames, '#4ea1ff');

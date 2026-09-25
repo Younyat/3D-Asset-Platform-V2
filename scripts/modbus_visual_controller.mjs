@@ -144,6 +144,52 @@ class VisualModbusState {
     this.blockedClients = new Set();
     this.stateReaders = new Map();
     this.values = Object.fromEntries(DEFAULT_JOINTS.map((joint) => [joint.id, 0]));
+    this.iotTelemetry = {
+      valid: false, temperatureC: 0, humidityPercent: 0, gyroDps: 0,
+      accelX: 0, accelY: 0, accelZ: 0,
+      gyroX: 0, gyroY: 0, gyroZ: 0,
+      magX: 0, magY: 0, magZ: 0,
+      hasAcceleration: false, hasGyroscope: false, hasMagnetometer: false, hasEnvironment: false,
+      source: '', updatedAtMs: 0,
+    };
+    this.iotTrace = [];
+    this.iotSequence = 0;
+  }
+
+  updateIotTelemetry(sample = {}) {
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    this.iotSequence += 1;
+    const receivedAtUtc = new Date().toISOString();
+    this.iotTelemetry = {
+      valid: sample.valid !== false,
+      temperatureC: finite(sample.temperatureC, this.iotTelemetry.temperatureC),
+      humidityPercent: clamp(finite(sample.humidityPercent, this.iotTelemetry.humidityPercent), 0, 100),
+      gyroDps: Math.max(0, finite(sample.gyroDps, this.iotTelemetry.gyroDps)),
+      accelX: finite(sample.accelX, this.iotTelemetry.accelX),
+      accelY: finite(sample.accelY, this.iotTelemetry.accelY),
+      accelZ: finite(sample.accelZ, this.iotTelemetry.accelZ),
+      gyroX: finite(sample.gyroX, this.iotTelemetry.gyroX),
+      gyroY: finite(sample.gyroY, this.iotTelemetry.gyroY),
+      gyroZ: finite(sample.gyroZ, this.iotTelemetry.gyroZ),
+      magX: finite(sample.magX, this.iotTelemetry.magX),
+      magY: finite(sample.magY, this.iotTelemetry.magY),
+      magZ: finite(sample.magZ, this.iotTelemetry.magZ),
+      hasAcceleration: sample.hasAcceleration ?? this.iotTelemetry.hasAcceleration,
+      hasGyroscope: sample.hasGyroscope ?? this.iotTelemetry.hasGyroscope,
+      hasMagnetometer: sample.hasMagnetometer ?? this.iotTelemetry.hasMagnetometer,
+      hasEnvironment: sample.hasEnvironment ?? this.iotTelemetry.hasEnvironment,
+      source: String(sample.source ?? this.iotTelemetry.source ?? ''),
+      updatedAtMs: Date.now(),
+      sequence: this.iotSequence,
+      sampleId: `iot-${Date.now().toString(36)}-${this.iotSequence.toString(36)}`,
+      sourceTimestampUtc: String(sample.sourceTimestampUtc ?? receivedAtUtc),
+      receivedAtUtc,
+      quality: sample.valid === false ? 'INVALID' : 'GOOD',
+      units: { temperatureC: 'Cel', humidityPercent: '%RH', acceleration: 'g', gyroscope: 'deg/s', magnetometer: 'raw' },
+    };
+    this.iotTrace.push({ ...this.iotTelemetry, transport: 'ble-gatt/http-local', previousSampleId: this.iotTrace.at(-1)?.sampleId ?? null });
+    this.iotTrace = this.iotTrace.slice(-100);
+    return this.iotTelemetry;
   }
 
   registerClient(session, context = {}) {
@@ -364,6 +410,11 @@ class VisualModbusState {
       sequence: this.sequence,
       timestampUtc: new Date().toISOString(),
       cycleEnabled: this.cycleEnabled,
+      iotTelemetry: {
+        ...this.iotTelemetry,
+        ageMs: this.iotTelemetry.updatedAtMs ? Date.now() - this.iotTelemetry.updatedAtMs : 65535,
+      },
+      iotTrace: this.iotTrace.slice(-20),
       registers,
       modbusPackets: packets,
     };
@@ -376,10 +427,15 @@ const controllerHtml = (endpoint) => `<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Digital Twin Modbus Controller</title>
+  <script>if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('embedded');</script>
   <style>
     :root { color: #edf1f3; background: #111417; font-family: Inter, ui-sans-serif, system-ui, Segoe UI, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 0%, #26323a 0, #111417 46%); }
+    html.embedded { background: transparent; }
+    html.embedded body { background: transparent; }
+    html.embedded .shell { padding: 10px; gap: 10px; }
+    html.embedded header, html.embedded .pad, html.embedded .panel { background: rgba(19,24,27,.72); box-shadow: none; backdrop-filter: blur(7px); }
     button, input { font: inherit; }
     .shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; gap: 18px; padding: 18px; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #303a42; border-radius: 8px; background: rgba(24, 28, 31, .9); }
@@ -425,11 +481,18 @@ const controllerHtml = (endpoint) => `<!doctype html>
     .ble-axis span { display: block; color: #aeb8bf; font-size: 10px; }
     .ble-axis strong { display: block; margin-top: 2px; color: #55d6ca; font-size: 13px; }
     .ble-device-list { display: grid; gap: 6px; }
-    .ble-device-card { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(3, 64px) auto auto; gap: 6px; align-items: center; padding: 7px; border: 1px solid #303a42; border-radius: 7px; background: rgba(18,22,25,.74); }
+    .ble-device-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: center; padding: 7px; border: 1px solid #303a42; border-radius: 7px; background: rgba(18,22,25,.74); }
+    .ble-device-card > div:first-child { grid-column: 1 / -1; }
     .ble-device-card.active { border-color: #55d6ca; background: rgba(17,78,74,.34); }
     .ble-device-card strong { display: block; color: #edf1f3; font-size: 12px; }
-    .ble-device-card span { display: block; color: #aeb8bf; font-size: 10px; margin-top: 2px; }
-    .ble-device-card code { color: #bffbf5; font-size: 11px; }
+    .ble-device-card span { display: block; color: #aeb8bf; font-size: 11px; margin-top: 2px; }
+    .ble-device-card code { color: #bffbf5; font-size: 14px; font-weight: 700; }
+    .ble-vector { min-width: 0; padding: 8px; border: 1px solid #344149; border-radius: 6px; background: rgba(8,13,16,.46); }
+    .ble-vector span { color: #9ba9b0; font-size: 11px; font-weight: 700; }
+    .ble-vector code { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0; }
+    .ble-vector.environment { grid-column: 1 / -1; display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); align-items: center; gap: 10px; border-color: #746536; background: rgba(67,55,24,.38); }
+    .ble-vector.environment code { margin-top: 0; color: #ffe3a0; font-size: 16px; text-align: center; }
+    .ble-vector.environment.waiting code { color: #b9a66e; font-size: 13px; }
     .ble-device-card button { min-height: 26px; border: 1px solid #3a4650; border-radius: 5px; background: #252b30; color: #edf1f3; cursor: pointer; font-size: 11px; padding: 0 8px; }
     .ble-device-card button.active { border-color: #e8661f; background: #c45114; color: #fff8ec; font-weight: 800; }
     .ble-map { display: grid; gap: 5px; }
@@ -437,6 +500,12 @@ const controllerHtml = (endpoint) => `<!doctype html>
     .ble-map-row span { color: #dfe7eb; font-size: 11px; }
     .ble-map-row button { min-height: 26px; border: 1px solid #3a4650; border-radius: 5px; background: #1a2024; color: #aeb8bf; cursor: pointer; font-size: 11px; }
     .ble-map-row button.active { border-color: #e8661f; background: #3d2816; color: #ffd8bd; font-weight: 800; }
+    .ble-formula-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 7px; align-items: center; }
+    .ble-formula-row label { color: #aeb8bf; font-size: 10px; }
+    .ble-formula-row input { min-height: 30px; min-width: 0; border: 1px solid #3a4650; border-radius: 5px; background: #111619; color: #bffbf5; padding: 0 8px; font: 11px Consolas, monospace; }
+    .ble-formula-row input.invalid { border-color: #e15c52; color: #ffc1bb; }
+    .ble-formula-result { min-width: 72px; color: #55d6ca; font: 10px Consolas, monospace; text-align: right; }
+    .ble-formula-help { color: #89969e; font-size: 10px; line-height: 1.35; }
     .ble-source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 6px; }
     .ble-source-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; align-items: center; padding: 5px; border: 1px solid #263039; border-radius: 6px; background: rgba(10,13,15,.32); }
     .ble-source-group strong { grid-column: 1 / -1; color: #55d6ca; font-size: 10px; }
@@ -490,6 +559,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
     .endpoint span { display: block; color: #aeb8bf; font-size: 11px; }
     .endpoint strong, .endpoint code { display: block; margin-top: 3px; color: #bffbf5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .gamepad { grid-template-columns: 1fr; } .sticks { grid-column: auto; grid-template-columns: 1fr 1fr; } .ble-map-row { grid-template-columns: minmax(118px, 1.5fr) repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { .shell { padding: 8px; } header { align-items: flex-start; } .status { flex-wrap: wrap; justify-content: flex-end; } .connect-panel { grid-template-columns: 1fr 78px; } .connect-panel button { min-width: 0; padding: 0 6px; } .ble-device-card { grid-template-columns: 1fr; } .ble-device-card > div:first-child { grid-column: auto; } .ble-calibration-controls { grid-template-columns: 1fr 1fr; } }
   </style>
 </head>
 <body>
@@ -518,7 +588,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
         </div>
         <div class="ble-panel">
           <div class="ble-head">
-            <div><strong>BLE TI SensorTag / Keyfob</strong><span>Map one axis or combined X/Y/Z movement to Modbus HR registers.</span></div>
+            <div><strong>BLE TI SensorTag / Keyfob</strong><span>Map axes or mathematical multi-sensor formulas to Modbus HR registers.</span></div>
             <div class="ble-actions">
               <button class="hot" id="ble-connect">Connect BLE Device</button>
               <button class="calibrate-hot" id="ble-calibrate-all-top">Auto Calibrate All Joints</button>
@@ -661,6 +731,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
         disableValue:[0x00],
         periodValue:[10],
         parser:'cc2650',
+        environment:{ service:'f000aa20-0451-4000-b000-000000000000', data:'f000aa21-0451-4000-b000-000000000000', config:'f000aa22-0451-4000-b000-000000000000', period:'f000aa23-0451-4000-b000-000000000000' },
       },
       'cc2541-sensortag': {
         id:'cc2541-sensortag',
@@ -707,11 +778,16 @@ const controllerHtml = (endpoint) => `<!doctype html>
       baseline:null,
       axes:{ x:0, y:0, z:0 },
       smooth:{ x:0, y:0, z:0 },
+      gyro:{ x:0, y:0, z:0 },
+      magnetometer:{ x:0, y:0, z:0 },
+      motionTelemetryReceived:false,
+      environmentTelemetryReceived:false,
       samples:[],
       lastPublish:0,
       lastRawHex:'',
       gains:{ x:3, y:3, z:3 },
       map:{},
+      formulas:{},
       axisSigns:{},
       calibration:{
         active:false,
@@ -744,11 +820,13 @@ const controllerHtml = (endpoint) => `<!doctype html>
     };
     const bleAxes = ['x', 'y', 'z'];
     const saveBleMap = () => localStorage.setItem('assetForge.bleAxisMap', JSON.stringify(sensorTag.map));
+    const saveBleFormulas = () => localStorage.setItem('assetForge.bleJointFormulas', JSON.stringify(sensorTag.formulas));
     const saveBleAxisSigns = () => localStorage.setItem('assetForge.bleAxisSigns', JSON.stringify(sensorTag.axisSigns));
     const saveBleCalibrationProfile = () => localStorage.setItem('assetForge.bleCalibrationProfile', JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: new Date().toISOString(),
       map: sensorTag.map,
+      formulas: sensorTag.formulas,
       axisSigns: sensorTag.axisSigns,
       gains: sensorTag.gains,
       results: sensorTag.calibration.results.slice(-12),
@@ -796,6 +874,14 @@ const controllerHtml = (endpoint) => `<!doctype html>
         sensorTag.map = Object.fromEntries(bleRows.map((row) => [row.jointId, normalizeBleMapEntry(stored[row.jointId])]));
       } catch {
         sensorTag.map = Object.fromEntries(bleRows.map((row) => [row.jointId, { source:'active', axes:[] }]));
+      }
+    };
+    const loadBleFormulas = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem('assetForge.bleJointFormulas') || '{}');
+        sensorTag.formulas = Object.fromEntries(bleRows.map((row) => [row.jointId, typeof stored[row.jointId] === 'string' ? stored[row.jointId].trim() : '']));
+      } catch {
+        sensorTag.formulas = Object.fromEntries(bleRows.map((row) => [row.jointId, '']));
       }
     };
     const loadBleAxisSigns = () => {
@@ -851,6 +937,9 @@ const controllerHtml = (endpoint) => `<!doctype html>
       lastRawHex:'',
       lastSeenAt:0,
       lastPublish:0,
+      reconnectAttempts:0,
+      manualStop:false,
+      reconnectTimer:null,
     });
     const activeBleContext = () => sensorTag.devices.get(sensorTag.activeDeviceId);
     const syncActiveBleContext = () => {
@@ -914,6 +1003,10 @@ const controllerHtml = (endpoint) => `<!doctype html>
         clearInterval(context.pollTimer);
         context.pollTimer = null;
       }
+      if (context.environmentPollTimer) {
+        clearInterval(context.environmentPollTimer);
+        context.environmentPollTimer = null;
+      }
       context.notificationHandlers.forEach(({ characteristic, handler }) => {
         characteristic.removeEventListener?.('characteristicvaluechanged', handler);
       });
@@ -933,11 +1026,17 @@ const controllerHtml = (endpoint) => `<!doctype html>
       container.innerHTML = devices.map((context) => {
         const samples = context.samples.filter((sampleMs) => now - sampleMs < 1000).length;
         const active = context.id === sensorTag.activeDeviceId;
+        const gyro = context.gyro || { x:0, y:0, z:0 };
+        const magnetometer = context.magnetometer || { x:0, y:0, z:0 };
+        const environment = context.iotTelemetry || {};
+        const supportsMotionSuite = context.profile?.parser === 'cc2650';
+        const supportsEnvironment = Boolean(context.profile?.environment);
         return '<div class="ble-device-card ' + (active ? 'active' : '') + '">' +
           '<div><strong>IoT ' + context.slot + ' | ' + escapeHtml(context.label) + '</strong><span>' + escapeHtml(context.profile.label) + ' | ' + (context.connected ? samples + ' samples/s' : 'disconnected') + '</span></div>' +
-          '<code>X' + context.slot + ' ' + context.smooth.x.toFixed(3) + '</code>' +
-          '<code>Y' + context.slot + ' ' + context.smooth.y.toFixed(3) + '</code>' +
-          '<code>Z' + context.slot + ' ' + context.smooth.z.toFixed(3) + '</code>' +
+          '<div class="ble-vector"><span>Accelerometer XYZ</span><code>X' + context.slot + ' ' + context.smooth.x.toFixed(3) + ' | Y' + context.slot + ' ' + context.smooth.y.toFixed(3) + ' | Z' + context.slot + ' ' + context.smooth.z.toFixed(3) + ' g</code></div>' +
+          '<div class="ble-vector"><span>Gyroscope XYZ</span><code>' + (!supportsMotionSuite ? 'Not available on this profile' : !context.motionTelemetryReceived ? 'Waiting for movement data...' : 'GX ' + gyro.x.toFixed(2) + ' | GY ' + gyro.y.toFixed(2) + ' | GZ ' + gyro.z.toFixed(2) + ' deg/s') + '</code></div>' +
+          '<div class="ble-vector"><span>Magnetometer</span><code>' + (!supportsMotionSuite ? 'Not available on this profile' : !context.motionTelemetryReceived ? 'Waiting for movement data...' : 'MX ' + magnetometer.x.toFixed(0) + ' | MY ' + magnetometer.y.toFixed(0) + ' | MZ ' + magnetometer.z.toFixed(0) + ' raw') + '</code></div>' +
+          '<div class="ble-vector environment ' + (context.environmentTelemetryReceived ? 'live' : 'waiting') + '"><span>Environmental telemetry</span><code>Temperature ' + (!supportsEnvironment ? 'not available' : context.environmentTelemetryReceived ? environment.temperatureC.toFixed(1) + ' C' : 'waiting...') + '</code><code>Humidity ' + (!supportsEnvironment ? 'not available' : context.environmentTelemetryReceived ? environment.humidityPercent.toFixed(1) + ' %RH' : 'waiting...') + '</code></div>' +
           '<button class="' + (active ? 'active' : '') + '" data-ble-active="' + context.id + '">' + (active ? 'Driving Robot' : 'Drive Robot') + '</button>' +
           '<button data-ble-disconnect="' + context.id + '">Disconnect</button>' +
           '</div>';
@@ -949,12 +1048,20 @@ const controllerHtml = (endpoint) => `<!doctype html>
         button.onclick = () => stopBleDevice(button.dataset.bleDisconnect);
       });
     };
+    let bleDeviceRenderTimer = null;
+    const scheduleBleDeviceRender = () => {
+      if (bleDeviceRenderTimer) return;
+      bleDeviceRenderTimer = setTimeout(() => {
+        bleDeviceRenderTimer = null;
+        renderBleDevices();
+      }, 200);
+    };
     const selectedBleProfiles = () => {
       const selected = document.getElementById('ble-profile')?.value || 'auto';
       if (selected !== 'auto') return [tiBleProfiles[selected]].filter(Boolean);
       return [tiBleProfiles.cc2650, tiBleProfiles['cc2541-sensortag'], tiBleProfiles['cc2541-keyfob']];
     };
-    const allBleOptionalServices = () => Array.from(new Set(Object.values(tiBleProfiles).map((profile) => profile.service)));
+    const allBleOptionalServices = () => Array.from(new Set(Object.values(tiBleProfiles).flatMap((profile) => [profile.service, profile.environment?.service].filter(Boolean))));
     const characteristicMap = (characteristics) => new Map(characteristics.map((characteristic) => [expandBleUuid(characteristic.uuid), characteristic]));
     const findCharacteristic = (characteristics, uuid) => characteristicMap(characteristics).get(expandBleUuid(uuid));
     const requireBleGattProfile = async (server, profile) => {
@@ -978,6 +1085,155 @@ const controllerHtml = (endpoint) => `<!doctype html>
       if (!data || !config) throw new Error('TI_BLE_GATT_PROFILE_INCOMPLETE');
       return { profile, data, config, period, range: null, axisCharacteristics: {} };
     };
+    const tokenizeBleFormula = (formula) => {
+      const tokens = [];
+      let index = 0;
+      while (index < formula.length) {
+        const char = formula[index];
+        if (/\\s/.test(char)) {
+          index += 1;
+          continue;
+        }
+        const number = formula.slice(index).match(/^(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?/i);
+        if (number) {
+          tokens.push({ type:'number', value:Number(number[0]) });
+          index += number[0].length;
+          continue;
+        }
+        const identifier = formula.slice(index).match(/^[A-Za-z][A-Za-z0-9_]*/);
+        if (identifier) {
+          tokens.push({ type:'identifier', value:identifier[0].toUpperCase() });
+          index += identifier[0].length;
+          continue;
+        }
+        if ('+-*/^(),'.includes(char)) {
+          tokens.push({ type:char, value:char });
+          index += 1;
+          continue;
+        }
+        throw new Error('Unsupported character at position ' + (index + 1));
+      }
+      tokens.push({ type:'eof', value:'' });
+      return tokens;
+    };
+    const bleFormulaFunctions = {
+      ABS:(value) => Math.abs(value),
+      SQRT:(value) => Math.sqrt(Math.max(0, value)),
+      SIN:(value) => Math.sin(value),
+      COS:(value) => Math.cos(value),
+      TAN:(value) => Math.tan(value),
+      ASIN:(value) => Math.asin(Math.max(-1, Math.min(1, value))),
+      ACOS:(value) => Math.acos(Math.max(-1, Math.min(1, value))),
+      ATAN:(value) => Math.atan(value),
+      ATAN2:(y, x) => Math.atan2(y, x),
+      MIN:(...values) => Math.min(...values),
+      MAX:(...values) => Math.max(...values),
+      AVG:(...values) => values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1),
+      HYPOT:(...values) => Math.hypot(...values),
+      POW:(base, exponent) => Math.pow(base, exponent),
+      CLAMP:(value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value)),
+    };
+    const evaluateBleFormula = (formula, variables = {}) => {
+      const tokens = tokenizeBleFormula(String(formula || ''));
+      let cursor = 0;
+      const current = () => tokens[cursor];
+      const consume = (type) => {
+        if (current().type !== type) throw new Error('Expected ' + type + ' near token ' + (cursor + 1));
+        return tokens[cursor++];
+      };
+      const parsePrimary = () => {
+        if (current().type === 'number') return consume('number').value;
+        if (current().type === '(') {
+          consume('(');
+          const value = parseExpression();
+          consume(')');
+          return value;
+        }
+        if (current().type !== 'identifier') throw new Error('Expected number, variable or function near token ' + (cursor + 1));
+        const name = consume('identifier').value;
+        if (current().type === '(') {
+          consume('(');
+          const args = [];
+          if (current().type !== ')') {
+            args.push(parseExpression());
+            while (current().type === ',') {
+              consume(',');
+              args.push(parseExpression());
+            }
+          }
+          consume(')');
+          const operation = bleFormulaFunctions[name];
+          if (!operation) throw new Error('Unknown function ' + name);
+          const value = operation(...args);
+          if (!Number.isFinite(value)) throw new Error('Function ' + name + ' returned an invalid value');
+          return value;
+        }
+        if (name === 'PI') return Math.PI;
+        if (name === 'E') return Math.E;
+        if (!/^[XYZ][1-9]\\d*$/.test(name)) throw new Error('Unknown variable ' + name);
+        const value = Number(variables[name] ?? 0);
+        return Number.isFinite(value) ? value : 0;
+      };
+      const parseUnary = () => {
+        if (current().type === '+') {
+          consume('+');
+          return parseUnary();
+        }
+        if (current().type === '-') {
+          consume('-');
+          return -parseUnary();
+        }
+        return parsePrimary();
+      };
+      const parsePower = () => {
+        let value = parseUnary();
+        if (current().type === '^') {
+          consume('^');
+          value = Math.pow(value, parsePower());
+        }
+        return value;
+      };
+      const parseTerm = () => {
+        let value = parsePower();
+        while (current().type === '*' || current().type === '/') {
+          const operator = current().type;
+          consume(operator);
+          const right = parsePower();
+          if (operator === '/' && Math.abs(right) < 1e-12) throw new Error('Division by zero');
+          value = operator === '*' ? value * right : value / right;
+        }
+        return value;
+      };
+      const parseExpression = () => {
+        let value = parseTerm();
+        while (current().type === '+' || current().type === '-') {
+          const operator = current().type;
+          consume(operator);
+          const right = parseTerm();
+          value = operator === '+' ? value + right : value - right;
+        }
+        return value;
+      };
+      const result = parseExpression();
+      if (current().type !== 'eof') throw new Error('Unexpected token near position ' + (cursor + 1));
+      if (!Number.isFinite(result)) throw new Error('Formula returned an invalid value');
+      return result;
+    };
+    const bleFormulaVariables = () => {
+      const variables = {};
+      sensorTag.devices.forEach((context) => {
+        bleAxes.forEach((axis) => {
+          variables[axis.toUpperCase() + context.slot] = (context.smooth[axis] || 0) * clampBleGain(sensorTag.gains[axis]);
+        });
+      });
+      return variables;
+    };
+    const evaluateJointFormula = (jointId) => {
+      const formula = String(sensorTag.formulas[jointId] || '').trim();
+      if (!formula) return undefined;
+      return Math.max(-1, Math.min(1, evaluateBleFormula(formula, bleFormulaVariables())));
+    };
+    window.__evaluateBleFormula = evaluateBleFormula;
     const renderBleMap = () => {
       document.getElementById('ble-map').innerHTML = bleRows.map((row) => {
         const selected = normalizeBleMapEntry(sensorTag.map[row.jointId]);
@@ -995,7 +1251,13 @@ const controllerHtml = (endpoint) => `<!doctype html>
         ).join('');
         const noneActive = selected.axes.length === 0;
         const summary = selected.axes.length ? ' | ' + selected.axes.map((axis) => axis.toUpperCase() + (selected.source === 'active' ? '' : selected.source)).join('+') : ' | none';
-        return '<div class="ble-map-row"><span>' + row.label + summary + '</span><button class="ble-none-button ' + (noneActive ? 'active' : '') + '" data-ble-map="' + row.jointId + ':none:none">None</button><div class="ble-source-grid">' + groups + '</div></div>';
+        const formula = sensorTag.formulas[row.jointId] || '';
+        let formulaResult = 'axis mode';
+        let formulaInvalid = false;
+        if (formula) {
+          try { formulaResult = evaluateJointFormula(row.jointId).toFixed(3); } catch (error) { formulaResult = error.message; formulaInvalid = true; }
+        }
+        return '<div class="ble-map-row"><span>' + row.label + summary + '</span><button class="ble-none-button ' + (noneActive ? 'active' : '') + '" data-ble-map="' + row.jointId + ':none:none">None</button><div class="ble-source-grid">' + groups + '</div><div class="ble-formula-row"><label>Joint formula</label><input aria-label="' + row.jointId.toUpperCase() + ' sensor formula" data-ble-formula="' + row.jointId + '" class="' + (formulaInvalid ? 'invalid' : '') + '" value="' + escapeHtml(formula) + '" placeholder="e.g. clamp(0.7*X1 + 0.3*Y2, -1, 1)"><output class="ble-formula-result" data-ble-formula-result="' + row.jointId + '" title="Normalized output -1..1">' + escapeHtml(formulaResult) + '</output></div><div class="ble-formula-help">Variables: X1 Y1 Z1, X2 Y2 Z2... Formula overrides axis buttons when present.</div></div>';
       }).join('');
       document.querySelectorAll('[data-ble-map]').forEach((button) => {
         button.onclick = () => {
@@ -1022,6 +1284,38 @@ const controllerHtml = (endpoint) => `<!doctype html>
           renderBleMap();
         };
       });
+      document.querySelectorAll('[data-ble-formula]').forEach((input) => {
+        input.onchange = () => {
+          const jointId = input.dataset.bleFormula;
+          const formula = input.value.trim();
+          try {
+            if (formula) evaluateBleFormula(formula, bleFormulaVariables());
+            sensorTag.formulas[jointId] = formula;
+            saveBleFormulas();
+            saveBleCalibrationProfile();
+            sensorTag.devices.forEach((context) => { context.lastPublish = 0; });
+            publishBleAxes(activeBleContext());
+            renderBleMap();
+          } catch (error) {
+            input.classList.add('invalid');
+            input.parentElement.querySelector('.ble-formula-result').textContent = error.message;
+          }
+        };
+      });
+    };
+    const updateBleFormulaOutputs = () => {
+      document.querySelectorAll('[data-ble-formula-result]').forEach((output) => {
+        const jointId = output.dataset.bleFormulaResult;
+        if (!sensorTag.formulas[jointId]) {
+          output.textContent = 'axis mode';
+          return;
+        }
+        try {
+          output.textContent = evaluateJointFormula(jointId).toFixed(3);
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
     };
     const updateBleAxisUi = () => {
       syncActiveBleContext();
@@ -1033,7 +1327,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
       sensorTag.samples = sensorTag.samples.filter((sampleMs) => now - sampleMs < 1000);
       if (context) context.samples = sensorTag.samples;
       document.getElementById('ble-rate').textContent = sensorTag.samples.length + ' samples/s';
-      renderBleDevices();
+      scheduleBleDeviceRender();
     };
     const dataViewToHex = (dataView) => Array.from(new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
     const readInt16 = (dataView, offset) => (offset + 1 < dataView.byteLength ? dataView.getInt16(offset, true) : 0);
@@ -1057,6 +1351,31 @@ const controllerHtml = (endpoint) => `<!doctype html>
       };
     };
     const parseKeyfobAxisValue = (dataView) => clampBleAxis(readInt8(dataView, 0) / 64);
+    const parseCc2650MotionChannels = (dataView) => {
+      const scale = 500 / 65536;
+      const acceleration = parseSensorTagMovement(dataView, tiBleProfiles.cc2650);
+      const gyroscope = dataView.byteLength >= 6
+        ? { x:readInt16(dataView, 0) * scale, y:readInt16(dataView, 2) * scale, z:readInt16(dataView, 4) * scale }
+        : { x:0, y:0, z:0 };
+      const magnetometer = dataView.byteLength >= 18
+        ? { x:readInt16(dataView, 12), y:readInt16(dataView, 14), z:readInt16(dataView, 16) }
+        : { x:0, y:0, z:0 };
+      return {
+        acceleration, gyroscope, magnetometer,
+        gyroDps:Math.sqrt((gyroscope.x ** 2) + (gyroscope.y ** 2) + (gyroscope.z ** 2)),
+      };
+    };
+    const parseCc2650Environment = (dataView) => ({
+      temperatureC: dataView.byteLength >= 2 ? (dataView.getUint16(0, true) / 65536) * 165 - 40 : 0,
+      humidityPercent: dataView.byteLength >= 4 ? (dataView.getUint16(2, true) / 65536) * 100 : 0,
+    });
+    const publishIotTelemetry = async (context, patch = {}) => {
+      context.iotTelemetry = { ...(context.iotTelemetry || {}), ...patch };
+      scheduleBleDeviceRender();
+      if (Date.now() - (context.lastIotPublish || 0) < 200) return;
+      context.lastIotPublish = Date.now();
+      await request('/iot-telemetry', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ...context.iotTelemetry, valid:true, source:context.label }) }).catch(() => undefined);
+    };
     const bleContextForSource = (source) => {
       if (String(source ?? 'active') === 'active') return activeBleContext();
       return Array.from(sensorTag.devices.values()).find((context) => String(context.slot) === String(source));
@@ -1075,6 +1394,13 @@ const controllerHtml = (endpoint) => `<!doctype html>
     const bleValueForJoint = (jointId, axes, axisSigns = sensorTag.axisSigns[jointId], context = activeBleContext()) => {
       const range = limits[jointId] || [-3.14, 3.14];
       const centered = bleMetricForAxes(jointId, axes, axisSigns, context);
+      const mid = (range[0] + range[1]) / 2;
+      const span = (range[1] - range[0]) * 0.42;
+      return Math.max(range[0], Math.min(range[1], mid + centered * span));
+    };
+    const bleValueForFormula = (jointId) => {
+      const range = limits[jointId] || [-3.14, 3.14];
+      const centered = evaluateJointFormula(jointId);
       const mid = (range[0] + range[1]) / 2;
       const span = (range[1] - range[0]) * 0.42;
       return Math.max(range[0], Math.min(range[1], mid + centered * span));
@@ -1240,10 +1566,12 @@ const controllerHtml = (endpoint) => `<!doctype html>
       sensorTag.calibration.samples = [];
       sensorTag.calibration.results = [];
       sensorTag.map = Object.fromEntries(bleRows.map((row) => [row.jointId, { source:'active', axes:[] }]));
+      sensorTag.formulas = Object.fromEntries(bleRows.map((row) => [row.jointId, '']));
       sensorTag.axisSigns = Object.fromEntries(bleRows.map((row) => [row.jointId, normalizeBleAxisSigns()]));
       sensorTag.gains = { x:3, y:3, z:3 };
       localStorage.removeItem('assetForge.bleCalibrationProfile');
       localStorage.removeItem('assetForge.bleAxisMap');
+      localStorage.removeItem('assetForge.bleJointFormulas');
       localStorage.removeItem('assetForge.bleAxisSigns');
       localStorage.removeItem('assetForge.bleAxisGains');
       renderBleGains();
@@ -1260,15 +1588,24 @@ const controllerHtml = (endpoint) => `<!doctype html>
       if (Date.now() - (sourceContext.lastPublish || 0) < 90) return;
       sourceContext.lastPublish = Date.now();
       const mapped = bleRows
-        .map((row) => ({ row, entry:normalizeBleMapEntry(sensorTag.map[row.jointId]) }))
-        .filter(({ entry }) => entry.axes.length && bleContextForSource(entry.source)?.id === sourceContext.id);
-      for (const row of mapped) {
+        .map((row) => ({ row, entry:normalizeBleMapEntry(sensorTag.map[row.jointId]), formula:String(sensorTag.formulas[row.jointId] || '').trim() }))
+        .filter(({ entry, formula }) => formula || (entry.axes.length && bleContextForSource(entry.source)?.id === sourceContext.id));
+      for (const item of mapped) {
+        let value;
+        try {
+          value = item.formula
+            ? bleValueForFormula(item.row.jointId)
+            : bleValueForJoint(item.row.jointId, item.entry.axes, sensorTag.axisSigns[item.row.jointId], sourceContext);
+        } catch {
+          continue;
+        }
         await request('/write', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ jointId: row.row.jointId, displayAddress: row.row.displayAddress, value: bleValueForJoint(row.row.jointId, row.entry.axes, sensorTag.axisSigns[row.row.jointId], sourceContext) })
+          body: JSON.stringify({ jointId: item.row.jointId, displayAddress: item.row.displayAddress, value })
         }).catch(() => undefined);
       }
+      updateBleFormulaOutputs();
       if (mapped.length) await refresh().catch(() => undefined);
     };
     const processBleAxes = (context, axes, rawHex = '') => {
@@ -1291,7 +1628,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
       context.samples = context.samples.filter((sampleMs) => Date.now() - sampleMs < 1400);
       if (!sensorTag.activeDeviceId) sensorTag.activeDeviceId = context.id;
       if (context.id !== sensorTag.activeDeviceId) {
-        renderBleDevices();
+        scheduleBleDeviceRender();
         publishBleAxes(context);
         return;
       }
@@ -1303,12 +1640,34 @@ const controllerHtml = (endpoint) => `<!doctype html>
     };
     const handleMovementNotification = (context, event) => {
       const dataView = event.target.value;
-      processBleAxes(context, parseSensorTagMovement(dataView, context.profile), dataViewToHex(dataView));
+      const acceleration = parseSensorTagMovement(dataView, context.profile);
+      processBleAxes(context, acceleration, dataViewToHex(dataView));
+      publishIotTelemetry(context, {
+        accelX:acceleration.x, accelY:acceleration.y, accelZ:acceleration.z,
+        hasAcceleration:true,
+      });
+      if (context.profile?.parser === 'cc2650') {
+        const motion = parseCc2650MotionChannels(dataView);
+        context.gyro = motion.gyroscope;
+        context.magnetometer = motion.magnetometer;
+        context.motionTelemetryReceived = true;
+        publishIotTelemetry(context, {
+          accelX:motion.acceleration.x, accelY:motion.acceleration.y, accelZ:motion.acceleration.z,
+          gyroX:motion.gyroscope.x, gyroY:motion.gyroscope.y, gyroZ:motion.gyroscope.z,
+          magX:motion.magnetometer.x, magY:motion.magnetometer.y, magZ:motion.magnetometer.z,
+          gyroDps:motion.gyroDps,
+          hasAcceleration:true, hasGyroscope:true, hasMagnetometer:dataView.byteLength >= 18,
+        });
+      }
     };
     const handleKeyfobAxisNotification = (context, axis, event) => {
       const dataView = event.target.value;
       context.keyfobAxes[axis] = parseKeyfobAxisValue(dataView);
       processBleAxes(context, { ...context.keyfobAxes }, axis + ':' + dataViewToHex(dataView));
+      publishIotTelemetry(context, {
+        accelX:context.keyfobAxes.x, accelY:context.keyfobAxes.y, accelZ:context.keyfobAxes.z,
+        hasAcceleration:true,
+      });
     };
     const writeBleCharacteristic = async (characteristic, value) => {
       if (!characteristic?.writeValue || !Array.isArray(value)) return;
@@ -1356,6 +1715,8 @@ const controllerHtml = (endpoint) => `<!doctype html>
     const stopBleDevice = async (deviceId, options = {}) => {
       const context = sensorTag.devices.get(deviceId);
       if (!context) return;
+      context.manualStop = true;
+      if (context.reconnectTimer) clearTimeout(context.reconnectTimer);
       clearBleContextRuntime(context);
       context.connected = false;
       context.baseline = null;
@@ -1424,10 +1785,70 @@ const controllerHtml = (endpoint) => `<!doctype html>
         if (!enabled && !notified && !session.data?.readValue) throw new Error('TI_BLE_ENABLE_FAILED');
         if (!notified) startCombinedBlePolling(context, session.data, session.profile);
       }
+      if (session.profile.environment) {
+        try {
+          const environmentService = await context.device.gatt.getPrimaryService(session.profile.environment.service);
+          const environmentCharacteristics = await environmentService.getCharacteristics();
+          const environmentData = findCharacteristic(environmentCharacteristics, session.profile.environment.data);
+          const environmentConfig = findCharacteristic(environmentCharacteristics, session.profile.environment.config);
+          const environmentPeriod = findCharacteristic(environmentCharacteristics, session.profile.environment.period);
+          const environmentHandler = (event) => {
+            context.environmentTelemetryReceived = true;
+            publishIotTelemetry(context, { ...parseCc2650Environment(event.target.value), hasEnvironment:true });
+          };
+          if (environmentData) {
+            const environmentNotified = await trackBleNotification(context, environmentData, environmentHandler).catch(() => false);
+            await tryWriteBleCharacteristic(environmentPeriod, [50]);
+            await tryWriteBleCharacteristic(environmentConfig, [0x01]);
+            if (!environmentNotified && environmentData.readValue) {
+              context.environmentPollTimer = setInterval(async () => {
+                const value = await environmentData.readValue().catch(() => undefined);
+                if (value) {
+                  context.environmentTelemetryReceived = true;
+                  publishIotTelemetry(context, { ...parseCc2650Environment(value), hasEnvironment:true });
+                }
+              }, 1000);
+            }
+          }
+        } catch {
+          // Movement remains available on SensorTag variants without the humidity service.
+        }
+      }
       context.connected = true;
+      context.reconnectAttempts = 0;
+      context.manualStop = false;
       context.firstNotificationTimer = setTimeout(() => {
         if (context.connected && !context.samples.length && context.id === sensorTag.activeDeviceId) setBleStatus('BLE starting no data yet');
       }, 5000);
+    };
+    const scheduleBleReconnect = (context) => {
+      if (!context || context.manualStop || context.reconnectTimer) return;
+      if (context.reconnectAttempts >= 3) {
+        setBleStatus('BLE disconnected - reconnect failed');
+        return;
+      }
+      context.reconnectAttempts += 1;
+      const delay = context.reconnectAttempts * 1200;
+      setBleStatus('BLE reconnecting ' + context.reconnectAttempts + '/3...');
+      context.reconnectTimer = setTimeout(async () => {
+        context.reconnectTimer = null;
+        try {
+          const server = await context.device.gatt.connect();
+          const session = await requireBleGattProfile(server, context.profile);
+          context.configCharacteristic = session.config;
+          context.periodCharacteristic = session.period;
+          context.rangeCharacteristic = session.range;
+          context.axisCharacteristics = session.axisCharacteristics || {};
+          context.characteristics = session.data ? [session.data] : Object.values(session.axisCharacteristics || {});
+          await armBleSession(context, session);
+          context.connected = true;
+          syncActiveBleContext();
+          renderBleDevices();
+          setBleStatus('BLE live - reconnected', true);
+        } catch {
+          scheduleBleReconnect(context);
+        }
+      }, delay);
     };
     const connectBle = async () => {
       if (!navigator.bluetooth) {
@@ -1465,8 +1886,9 @@ const controllerHtml = (endpoint) => `<!doctype html>
           renderBleDevices();
           if (context.id === sensorTag.activeDeviceId) {
             syncActiveBleContext();
-            setBleStatus('BLE disconnected');
+            setBleStatus(context.manualStop ? 'BLE disconnected by user' : 'BLE link lost');
           }
+          scheduleBleReconnect(context);
         });
         document.getElementById('ble-device').textContent = context.label + ' | ' + session.profile.label + ' | active';
         await armBleSession(context, session);
@@ -1682,6 +2104,7 @@ const controllerHtml = (endpoint) => `<!doctype html>
     renderMap([]);
     renderPackets([]);
     loadBleMap();
+    loadBleFormulas();
     loadBleAxisSigns();
     loadBleGains();
     loadBleCalibrationProfile();
@@ -1789,6 +2212,10 @@ export const createVisualControllerServer = (state = new VisualModbusState()) =>
         const result = state.nudge(body.displayAddress ?? body.jointId ?? body.signalId, Number(body.delta));
         return send(response, 200, { ok: true, ...result });
       }
+      if (request.method === 'POST' && path === '/iot-telemetry') {
+        const body = await readJsonBody(request);
+        return send(response, 200, { ok: true, iotTelemetry: state.updateIotTelemetry(body) });
+      }
       return send(response, 404, { ok: false, error: 'not-found' });
     } catch (error) {
       return send(response, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -1806,6 +2233,20 @@ const selfTest = async () => {
   if (snapshot.registers[1].registers.length !== 2) throw new Error('f32 register must use two words.');
   if (snapshot.modbusPackets[0].functionCode !== 3) throw new Error('Expected Modbus function code 03.');
   if (!snapshot.modbusPackets[1].decoded.includes('0x')) throw new Error('Expected hex words in decoded packet.');
+  state.updateIotTelemetry({
+    valid: true, temperatureC: 24.5, humidityPercent: 48.2, gyroDps: 12.7,
+    accelX: 0.12, accelY: -0.34, accelZ: 0.98,
+    gyroX: 3.1, gyroY: -4.2, gyroZ: 5.3,
+    magX: 101, magY: -202, magZ: 303,
+    hasAcceleration: true, hasGyroscope: true, hasMagnetometer: true, hasEnvironment: true,
+    source: 'self-test',
+  });
+  const traced = state.snapshot();
+  if (traced.iotTelemetry.sequence !== 1 || !traced.iotTelemetry.sampleId) throw new Error('IoT telemetry trace identity was not generated.');
+  if (traced.iotTelemetry.accelY !== -0.34 || traced.iotTelemetry.gyroZ !== 5.3 || traced.iotTelemetry.magY !== -202 || !traced.iotTelemetry.hasEnvironment) {
+    throw new Error('IoT motion vectors were not preserved by the telemetry contract.');
+  }
+  if (traced.iotTrace.length !== 1 || traced.iotTrace[0].quality !== 'GOOD') throw new Error('IoT telemetry trace history is invalid.');
   console.log('visual modbus controller self-test passed');
 };
 

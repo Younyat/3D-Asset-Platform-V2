@@ -195,6 +195,22 @@ try {
     if (storedBleMap.j1?.source !== 'active' || !Array.isArray(storedBleMap.j1?.axes) || storedBleMap.j1.axes.join(',') !== 'x,y') {
       throw new Error(`BLE multi-axis mapping was not persisted for HR 40101/J1: ${JSON.stringify(storedBleMap.j1)}`);
     }
+    const jointFormula = 'clamp(0.5*X1 + 0.25*Y2 - Z3, -1, 1)';
+    await page.getByLabel('J1 sensor formula').fill(jointFormula);
+    await page.getByLabel('J1 sensor formula').press('Tab');
+    const formulaState = await page.evaluate(() => ({
+      stored: JSON.parse(localStorage.getItem('assetForge.bleJointFormulas') || '{}'),
+      value: window.__evaluateBleFormula?.('clamp(0.5*X1 + 0.25*Y2 - Z3, -1, 1)', { X1:0.8, Y2:0.4, Z3:-0.2 }),
+      limited: window.__evaluateBleFormula?.('clamp(X1*4, -1, 1)', { X1:0.8 }),
+    }));
+    if (formulaState.stored.j1 !== jointFormula) throw new Error(`BLE joint formula was not persisted: ${JSON.stringify(formulaState.stored)}`);
+    if (Math.abs(formulaState.value - 0.7) > 0.000001) throw new Error(`BLE multi-device formula returned ${formulaState.value}, expected 0.7.`);
+    if (formulaState.limited !== 1) throw new Error(`BLE formula clamp returned ${formulaState.limited}, expected 1.`);
+    await page.getByLabel('J2 sensor formula').fill('X1 + unknown');
+    await page.getByLabel('J2 sensor formula').press('Tab');
+    if (!(await page.getByLabel('J2 sensor formula').evaluate((input) => input.classList.contains('invalid')))) {
+      throw new Error('Invalid BLE formula was not rejected visibly.');
+    }
     await page.waitForFunction(
       (expectedPort) =>
         document.body.innerText.includes('Controller IP') &&
